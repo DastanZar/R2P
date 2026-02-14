@@ -440,9 +440,9 @@ Rules:
         if (dateMatch && !bulletRe.test(line)) {
           if (current) entries.push(current);
 
-          // Try to parse "Role — Company (dates)" or "Company | Role | dates" etc.
+          // Try to parse "Role | Company | dates" or "Role — Company (dates)" etc.
           const cleaned = line.replace(dateRangeRe, "").replace(/[()]/g, "").trim();
-          const parts = cleaned.split(/\s*[—–\-|@]\s*/).map(s => s.trim()).filter(Boolean);
+          const parts = cleaned.split(/\s*[—–|@]\s*/).map(s => s.trim()).filter(Boolean);
 
           current = {
             company: parts[1] || parts[0] || "",
@@ -455,7 +455,7 @@ Rules:
 
         // If no current entry yet but line looks like a company/role header
         if (!current && !bulletRe.test(line)) {
-          const parts = line.split(/\s*[—–\-|@]\s*/).map(s => s.trim()).filter(Boolean);
+          const parts = line.split(/\s*[—–|@]\s*/).map(s => s.trim()).filter(Boolean);
           if (parts.length >= 1) {
             current = {
               company: parts[1] || parts[0] || "",
@@ -494,34 +494,55 @@ Rules:
         if (!line) continue;
 
         // Lines with degree keywords or institution names start new entries
-        const hasDegree = /\b(B\.?S\.?|B\.?A\.?|M\.?S\.?|M\.?A\.?|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(line);
+        const hasDegree = /\b(B\.?S\.?|B\.?A\.?|B\.?Tech|M\.?S\.?|M\.?A\.?|M\.?Tech|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(line);
         const hasYear = yearRe.test(line);
 
         if (hasDegree || (!current && line.length > 3)) {
           if (current) entries.push(current);
-          const yearMatch = line.match(yearRe);
           current = {
             institution: "",
             degree: "",
-            year: yearMatch ? yearMatch[1] : "",
+            year: "",
           };
 
-          // Try to split "Degree — Institution" or "Institution — Degree"
-          const parts = line.replace(/[()]/g, " ").replace(/\d{4}\s*[-–—]?\s*\d{0,4}/, "").trim();
-          const segments = parts.split(/\s*[—–\-|,]\s*/).map(s => s.trim()).filter(Boolean);
+          // Split on pipe delimiters only (not hyphens, to preserve compound names)
+          const segments = line.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
 
-          if (hasDegree) {
-            // Find which segment has the degree
-            for (let i = 0; i < segments.length; i++) {
-              if (/\b(B\.?S\.?|B\.?A\.?|M\.?S\.?|M\.?A\.?|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(segments[i])) {
-                current.degree = segments[i];
-                current.institution = segments.filter((_, j) => j !== i).join(", ");
-                break;
+          if (segments.length >= 3) {
+            // Pattern: Degree | Institution | Year
+            current.degree = segments[0];
+            current.institution = segments[1];
+            const ym = segments[2].match(yearRe);
+            current.year = ym ? ym[1] : segments[2];
+          } else if (segments.length === 2) {
+            // Pattern: Degree | Institution  (year may be embedded)
+            const ym0 = segments[0].match(yearRe);
+            const ym1 = segments[1].match(yearRe);
+            if (hasDegree) {
+              if (/\b(B\.?S\.?|B\.?A\.?|B\.?Tech|M\.?S\.?|M\.?A\.?|M\.?Tech|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(segments[0])) {
+                current.degree = segments[0].replace(/\s*\d{4}\s*[-–—]?\s*\d{0,4}\s*/, "").trim();
+                current.institution = segments[1].replace(/\s*\d{4}\s*[-–—]?\s*\d{0,4}\s*/, "").trim();
+              } else {
+                current.institution = segments[0].replace(/\s*\d{4}\s*[-–—]?\s*\d{0,4}\s*/, "").trim();
+                current.degree = segments[1].replace(/\s*\d{4}\s*[-–—]?\s*\d{0,4}\s*/, "").trim();
               }
+            } else {
+              current.institution = segments[0];
+              current.degree = segments[1];
             }
-            if (!current.degree) current.degree = segments[0] || "";
+            current.year = (ym1 ? ym1[1] : "") || (ym0 ? ym0[1] : "");
           } else {
-            current.institution = segments[0] || line;
+            // Single segment — try splitting on dash/comma as fallback
+            const parts = line.replace(/[()]/g, " ").replace(/\d{4}\s*[-–—]?\s*\d{0,4}/, "").trim();
+            const subSegments = parts.split(/\s*[—–,]\s*/).map(s => s.trim()).filter(Boolean);
+            const yearMatch = line.match(yearRe);
+            current.year = yearMatch ? yearMatch[1] : "";
+            if (hasDegree) {
+              current.degree = subSegments[0] || "";
+              current.institution = subSegments.slice(1).join(", ");
+            } else {
+              current.institution = subSegments[0] || line;
+            }
           }
           continue;
         }
@@ -559,18 +580,57 @@ Rules:
       if (!lines.length) return [];
 
       const bulletRe = /^[•\-–—*▪▸►]\s*/;
-      const urlRe = /(https?:\/\/[^\s)]+)/;
+      const urlRe = /((?:https?:\/\/)?(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org)\/[^\s)]+|https?:\/\/[^\s)]+)/;
+      const metaLineRe = /^(Tech\s*Stack|Technologies|GitHub|Link|Features|Built\s*with|URL|Demo|Live|Source)\s*:/i;
       const entries = [];
       let current = null;
 
       for (const line of lines) {
         if (!line) continue;
 
-        // Non-bullet line that's short-ish → new project name
-        if (!bulletRe.test(line) && line.length < 100) {
+        // Check if this line is a metadata/continuation line for the current project
+        if (current) {
+          const clean = line.replace(bulletRe, "").trim();
+
+          // Tech Stack / Technologies line → extract into technologies array
+          if (/^(Tech\s*Stack|Technologies|Built\s*with)\s*:/i.test(clean)) {
+            const techs = clean.replace(/^[^:]+:\s*/, "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
+            current.technologies.push(...techs);
+            continue;
+          }
+
+          // GitHub / Link / URL line → extract link
+          if (/^(GitHub|Link|URL|Demo|Live|Source)\s*:/i.test(clean)) {
+            const urlMatch = clean.replace(/^[^:]+:\s*/, "").trim();
+            if (urlMatch && !current.link) current.link = urlMatch;
+            continue;
+          }
+
+          // Bare URL on its own line
+          const bareUrl = clean.match(urlRe);
+          if (bareUrl && clean === bareUrl[0]) {
+            if (!current.link) current.link = bareUrl[0];
+            continue;
+          }
+
+          // Features line → add to description
+          if (/^Features\s*:/i.test(clean)) {
+            current.description += (current.description ? " " : "") + clean;
+            continue;
+          }
+
+          // Bullet point or longer description line → append to description
+          if (bulletRe.test(line) || line.length >= 80) {
+            current.description += (current.description ? " " : "") + clean;
+            continue;
+          }
+        }
+
+        // Short non-bullet, non-meta line → start a new project
+        if (!bulletRe.test(line) && !metaLineRe.test(line) && line.length < 80) {
           if (current) entries.push(current);
           const urlMatch = line.match(urlRe);
-          const name = line.replace(urlRe, "").replace(/[—–\-|]/g, " ").trim();
+          const name = line.replace(urlRe, "").replace(/[—–|]/g, " ").trim();
           current = {
             name: name,
             description: "",
@@ -580,18 +640,10 @@ Rules:
           continue;
         }
 
+        // If no current project yet, treat as description
         if (current) {
           const clean = line.replace(bulletRe, "").trim();
-          const urlMatch = clean.match(urlRe);
-          if (urlMatch && !current.link) current.link = urlMatch[1];
-
-          // Check for tech stack indicators
-          if (/\b(built with|tech|stack|using|technologies)\b/i.test(clean)) {
-            const techs = clean.replace(/.*?:\s*/, "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
-            current.technologies.push(...techs);
-          } else {
-            current.description += (current.description ? " " : "") + clean;
-          }
+          current.description += (current.description ? " " : "") + clean;
         }
       }
 
