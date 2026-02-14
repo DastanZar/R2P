@@ -3,23 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>R2P — Resume to Portfolio JSON Extractor</title>
+  <title>R2P — Resume to Portfolio</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
   <style>
-    /* Custom scrollbar for pre blocks */
-    pre::-webkit-scrollbar { width: 8px; height: 8px; }
-    pre::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
-    pre::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-    pre::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    * { font-family: 'Inter', system-ui, sans-serif; }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
     /* Spinner animation */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner {
-      width: 24px; height: 24px;
-      border: 3px solid #e2e8f0;
-      border-top-color: #6366f1;
+      width: 20px; height: 20px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
+    }
+
+    /* Pulse animation for upload zone */
+    @keyframes pulse-border {
+      0%, 100% { border-color: rgba(99, 102, 241, 0.3); }
+      50% { border-color: rgba(99, 102, 241, 0.7); }
+    }
+
+    /* Gradient text */
+    .gradient-text {
+      background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Glass card */
+    .glass-card {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    /* Upload zone states */
+    .upload-zone {
+      transition: all 0.3s ease;
+      border: 2px dashed rgba(99, 102, 241, 0.3);
+    }
+    .upload-zone:hover {
+      border-color: rgba(99, 102, 241, 0.6);
+      background: rgba(99, 102, 241, 0.05);
+    }
+    .upload-zone.drag-over {
+      border-color: #6366f1;
+      background: rgba(99, 102, 241, 0.1);
+      animation: pulse-border 1.5s ease-in-out infinite;
+      transform: scale(1.01);
+    }
+    .upload-zone.has-file {
+      border-color: rgba(34, 197, 94, 0.5);
+      background: rgba(34, 197, 94, 0.05);
+    }
+
+    /* Smooth transitions */
+    .fade-enter {
+      animation: fadeIn 0.4s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     /* JSON syntax highlighting */
@@ -29,124 +94,294 @@
     .json-boolean { color: #f9a8d4; }
     .json-null { color: #a5b4fc; }
     .json-bracket { color: #cbd5e1; }
+
+    /* Tab styles */
+    .tab-btn {
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .tab-btn.active {
+      color: #818cf8;
+    }
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #6366f1, #a78bfa);
+      border-radius: 1px;
+    }
+
+    /* Progress bar */
+    .progress-bar {
+      background: linear-gradient(90deg, #6366f1, #a78bfa, #6366f1);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Button glow */
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #7c3aed);
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+      transition: all 0.2s ease;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 30px rgba(99, 102, 241, 0.5);
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
   </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body class="bg-[#0a0a0f] text-gray-100 min-h-screen">
+
+  <!-- ===== BACKGROUND GRADIENT ===== -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden">
+    <div class="absolute -top-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl"></div>
+    <div class="absolute top-1/3 -left-40 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-600/5 rounded-full blur-3xl"></div>
+  </div>
 
   <!-- ===== HEADER ===== -->
-  <header class="border-b border-gray-800 bg-gray-900/80 backdrop-blur sticky top-0 z-10">
-    <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-      <h1 class="text-xl font-bold tracking-tight">
-        <span class="text-indigo-400">R2P</span>
-        <span class="text-gray-400 font-normal text-sm ml-2">Resume → Portfolio</span>
-      </h1>
-      <span class="text-xs text-gray-500">Phase 1 &amp; 2: JSON → Portfolio</span>
+  <header class="relative border-b border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">R</div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white">R2P</h1>
+          <p class="text-[10px] text-gray-500 -mt-0.5 tracking-wide uppercase">Resume → Portfolio</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-[11px] text-gray-600 hidden sm:block">Phase 3A</span>
+        <div class="h-4 w-px bg-gray-800 hidden sm:block"></div>
+        <a href="https://github.com/DastanZar/R2P" target="_blank" class="text-gray-500 hover:text-gray-300 transition-colors">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        </a>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+  <main class="relative max-w-5xl mx-auto px-6 py-10 space-y-8">
 
-    <!-- ===== API KEY INPUT (optional) ===== -->
-    <section class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-      <label for="apiKey" class="block text-sm font-medium text-gray-300 mb-1">
-        OpenAI API Key <span class="text-gray-500">(optional — enables LLM extraction)</span>
-      </label>
-      <div class="flex gap-3">
-        <input
-          id="apiKey"
-          type="password"
-          placeholder="sk-..."
-          class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-        <button
-          id="toggleKey"
-          class="text-xs text-gray-400 hover:text-gray-200 px-2"
-          title="Show / hide key"
-        >Show</button>
-      </div>
-      <p id="modeIndicator" class="mt-2 text-xs text-gray-500">
-        Mode: <span class="text-amber-400 font-medium">Regex/Heuristic fallback</span> — paste an API key to use GPT extraction.
+    <!-- ===== HERO SECTION ===== -->
+    <section class="text-center py-6">
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">
+        Turn your resume into a <span class="gradient-text">portfolio website</span>
+      </h2>
+      <p class="text-gray-500 text-base max-w-xl mx-auto">
+        Upload your PDF resume or paste text — we'll extract the data and generate a beautiful portfolio site in seconds.
       </p>
     </section>
 
-    <!-- ===== RESUME INPUT ===== -->
-    <section class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-      <label for="resumeText" class="block text-sm font-medium text-gray-300 mb-2">
-        Paste your resume as plain text
-      </label>
-      <textarea
-        id="resumeText"
-        rows="14"
-        placeholder="John Doe&#10;Software Engineer&#10;john@example.com | (555) 123-4567&#10;linkedin.com/in/johndoe | github.com/johndoe&#10;San Francisco, CA&#10;&#10;SUMMARY&#10;Experienced software engineer with 5+ years...&#10;&#10;EXPERIENCE&#10;Senior Developer — Acme Corp (Jan 2021 – Present)&#10;• Led migration of monolith to microservices&#10;• Reduced API latency by 40%&#10;..."
-        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-y"
-      ></textarea>
-      <div class="flex justify-end mt-3">
+    <!-- ===== STEP INDICATORS ===== -->
+    <div class="flex items-center justify-center gap-2 text-xs text-gray-500">
+      <div id="step1Indicator" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+        <span class="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center text-[10px] font-bold">1</span>
+        Upload
+      </div>
+      <div class="w-6 h-px bg-gray-800"></div>
+      <div id="step2Indicator" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-gray-600">
+        <span class="w-5 h-5 rounded-full bg-gray-800 flex items-center justify-center text-[10px] font-bold">2</span>
+        Extract
+      </div>
+      <div class="w-6 h-px bg-gray-800"></div>
+      <div id="step3Indicator" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-gray-600">
+        <span class="w-5 h-5 rounded-full bg-gray-800 flex items-center justify-center text-[10px] font-bold">3</span>
+        Generate
+      </div>
+    </div>
+
+    <!-- ===== API KEY INPUT (collapsible) ===== -->
+    <section class="glass-card rounded-2xl overflow-hidden">
+      <button id="apiKeyToggle" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-medium text-gray-300">OpenAI API Key</p>
+            <p id="modeIndicator" class="text-[11px] text-gray-500">Using regex/heuristic mode — add key for AI extraction</p>
+          </div>
+        </div>
+        <svg id="apiKeyChevron" class="w-4 h-4 text-gray-600 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div id="apiKeyPanel" class="hidden px-6 pb-5">
+        <div class="flex gap-3">
+          <input
+            id="apiKey"
+            type="password"
+            placeholder="sk-..."
+            class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+          />
+          <button
+            id="toggleKey"
+            class="text-xs text-gray-500 hover:text-gray-300 px-3 rounded-lg border border-white/10 hover:border-white/20 transition-all"
+            title="Show / hide key"
+          >Show</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== RESUME INPUT — TABBED (PDF Upload / Text Paste) ===== -->
+    <section class="glass-card rounded-2xl overflow-hidden">
+      <!-- Tabs -->
+      <div class="flex border-b border-white/5">
+        <button id="tabPdf" class="tab-btn active flex-1 px-6 py-3.5 text-sm font-medium text-gray-400 hover:text-gray-200 flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          Upload PDF
+        </button>
+        <button id="tabText" class="tab-btn flex-1 px-6 py-3.5 text-sm font-medium text-gray-400 hover:text-gray-200 flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Paste Text
+        </button>
+      </div>
+
+      <!-- PDF Upload Tab -->
+      <div id="pdfPanel" class="p-6">
+        <div
+          id="dropZone"
+          class="upload-zone rounded-2xl p-10 text-center cursor-pointer"
+        >
+          <div id="dropZoneContent">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-500/10 flex items-center justify-center">
+              <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+              </svg>
+            </div>
+            <p class="text-gray-300 font-medium mb-1">Drop your PDF resume here</p>
+            <p class="text-gray-600 text-sm mb-4">or click to browse files</p>
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-gray-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+              PDF files up to 10MB
+            </div>
+          </div>
+          <div id="dropZoneFile" class="hidden">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-green-500/10 flex items-center justify-center">
+              <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <p id="fileName" class="text-gray-200 font-medium mb-1"></p>
+            <p id="fileSize" class="text-gray-500 text-sm mb-3"></p>
+            <button id="removeFile" class="text-xs text-red-400 hover:text-red-300 transition-colors underline underline-offset-2">Remove file</button>
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept=".pdf" class="hidden" />
+
+        <!-- PDF extraction progress -->
+        <div id="pdfProgress" class="hidden mt-4 fade-enter">
+          <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
+            <span id="pdfProgressLabel">Extracting text from PDF...</span>
+            <span id="pdfProgressPercent"></span>
+          </div>
+          <div class="h-1 bg-white/5 rounded-full overflow-hidden">
+            <div id="pdfProgressBar" class="h-full progress-bar rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Text Paste Tab -->
+      <div id="textPanel" class="hidden p-6">
+        <textarea
+          id="resumeText"
+          rows="12"
+          placeholder="John Doe&#10;Software Engineer&#10;john@example.com | (555) 123-4567&#10;linkedin.com/in/johndoe | github.com/johndoe&#10;San Francisco, CA&#10;&#10;SUMMARY&#10;Experienced software engineer with 5+ years...&#10;&#10;EXPERIENCE&#10;Senior Developer — Acme Corp (Jan 2021 – Present)&#10;• Led migration of monolith to microservices&#10;• Reduced API latency by 40%&#10;..."
+          class="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 resize-y transition-all leading-relaxed"
+        ></textarea>
+      </div>
+
+      <!-- Extract Button -->
+      <div class="px-6 pb-6">
         <button
           id="extractBtn"
-          class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="btn-primary w-full text-white font-semibold px-6 py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span id="extractLabel">Extract JSON</span>
+          <span id="extractLabel">Extract Resume Data</span>
           <div id="extractSpinner" class="spinner hidden"></div>
         </button>
       </div>
     </section>
 
     <!-- ===== STATUS MESSAGE ===== -->
-    <div id="statusMsg" class="hidden text-sm rounded-lg px-4 py-3"></div>
+    <div id="statusMsg" class="hidden text-sm rounded-xl px-5 py-3.5 fade-enter"></div>
 
     <!-- ===== RESULTS ===== -->
-    <section id="resultsSection" class="hidden bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800">
-        <h2 class="text-sm font-medium text-gray-300">Extracted JSON</h2>
+    <section id="resultsSection" class="hidden glass-card rounded-2xl overflow-hidden fade-enter">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-white/5">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+            <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <h2 class="text-sm font-semibold text-gray-200">Extracted JSON</h2>
+        </div>
         <div class="flex gap-2">
-          <button id="copyBtn" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-md transition-colors">
+          <button id="copyBtn" class="text-xs bg-white/5 hover:bg-white/10 text-gray-400 hover:text-gray-200 px-3.5 py-2 rounded-lg transition-all border border-white/5 hover:border-white/10">
             📋 Copy
           </button>
-          <button id="downloadBtn" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-md transition-colors">
+          <button id="downloadBtn" class="text-xs bg-white/5 hover:bg-white/10 text-gray-400 hover:text-gray-200 px-3.5 py-2 rounded-lg transition-all border border-white/5 hover:border-white/10">
             ⬇ Download
           </button>
         </div>
       </div>
-      <pre id="jsonOutput" class="p-5 text-sm leading-relaxed overflow-x-auto bg-gray-950 max-h-[600px] overflow-y-auto"></pre>
+      <pre id="jsonOutput" class="p-6 text-sm leading-relaxed overflow-x-auto bg-[#06060a] max-h-[500px] overflow-y-auto"></pre>
     </section>
 
     <!-- ===== PHASE 2: PORTFOLIO GENERATOR ===== -->
-    <section id="portfolioSection" class="hidden space-y-6">
+    <section id="portfolioSection" class="hidden space-y-6 fade-enter">
 
       <!-- Generate Portfolio CTA -->
-      <div class="bg-gradient-to-r from-indigo-900/40 to-purple-900/40 rounded-xl p-6 border border-indigo-700/50 text-center">
-        <h2 class="text-lg font-semibold text-white mb-2">🚀 Ready to generate your portfolio?</h2>
-        <p class="text-sm text-gray-400 mb-4">Turn the extracted JSON into a beautiful single-page portfolio website.</p>
+      <div class="glass-card rounded-2xl p-8 text-center border border-indigo-500/10">
+        <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+          <svg class="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/>
+          </svg>
+        </div>
+        <h2 class="text-xl font-bold text-white mb-2">Ready to generate your portfolio?</h2>
+        <p class="text-sm text-gray-500 mb-5 max-w-md mx-auto">Choose a template and we'll create a beautiful single-page portfolio from your resume data.</p>
         <button
           id="openGeneratorBtn"
-          class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors"
+          class="btn-primary text-white font-semibold px-8 py-3 rounded-xl text-sm inline-flex items-center gap-2"
         >
-          Generate Portfolio
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/></svg>
+          Choose Template
         </button>
       </div>
 
       <!-- Generator Options Panel (hidden until button clicked) -->
-      <div id="generatorPanel" class="hidden bg-gray-900 rounded-xl p-6 border border-gray-800 space-y-5">
-        <h3 class="text-sm font-medium text-gray-300">Choose a Template</h3>
+      <div id="generatorPanel" class="hidden glass-card rounded-2xl p-6 space-y-5 fade-enter">
+        <h3 class="text-sm font-semibold text-gray-200">Choose a Template</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label class="relative cursor-pointer">
             <input type="radio" name="template" value="minimalist" checked class="peer sr-only" />
-            <div class="border-2 border-gray-700 peer-checked:border-indigo-500 rounded-lg p-4 transition-colors">
+            <div class="border-2 border-white/10 peer-checked:border-indigo-500 rounded-xl p-5 transition-all hover:border-white/20">
               <div class="flex items-center gap-3">
-                <span class="text-2xl">🖤</span>
+                <div class="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center text-xl">🖤</div>
                 <div>
-                  <p class="text-sm font-medium text-white">Minimalist</p>
+                  <p class="text-sm font-semibold text-white">Minimalist</p>
                   <p class="text-xs text-gray-500">Dark, clean, modern — Inter font, smooth animations</p>
                 </div>
               </div>
             </div>
           </label>
-          <!-- Future templates can be added here -->
         </div>
         <div class="flex justify-end">
           <button
             id="generateWebsiteBtn"
-            class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2"
+            class="btn-primary text-white font-semibold px-6 py-3 rounded-xl text-sm flex items-center gap-2"
           >
             <span id="genLabel">Generate Website</span>
             <div id="genSpinner" class="spinner hidden"></div>
@@ -155,17 +390,18 @@
       </div>
 
       <!-- Preview & Download -->
-      <div id="previewPanel" class="hidden space-y-4">
+      <div id="previewPanel" class="hidden space-y-4 fade-enter">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-medium text-gray-300">Portfolio Preview</h3>
+          <h3 class="text-sm font-semibold text-gray-200">Portfolio Preview</h3>
           <button
             id="downloadPortfolioBtn"
-            class="bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors"
+            class="text-sm bg-green-600 hover:bg-green-500 text-white font-medium px-5 py-2.5 rounded-xl transition-all flex items-center gap-2"
           >
-            ⬇ Download Portfolio HTML
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+            Download HTML
           </button>
         </div>
-        <div class="rounded-xl overflow-hidden border border-gray-700 bg-white">
+        <div class="rounded-2xl overflow-hidden border border-white/10 bg-white">
           <iframe id="portfolioPreview" class="w-full" style="height:600px;" sandbox="allow-scripts"></iframe>
         </div>
       </div>
@@ -175,8 +411,8 @@
   </main>
 
   <!-- ===== FOOTER ===== -->
-  <footer class="text-center text-xs text-gray-600 py-8">
-    R2P Phase 1 &amp; 2 — JSON Extraction &amp; Portfolio Generation &middot; No data leaves your browser (unless using LLM mode)
+  <footer class="relative text-center text-xs text-gray-700 py-10">
+    <p>R2P — Resume to Portfolio &middot; No data leaves your browser (unless using LLM mode)</p>
   </footer>
 
   <!-- ================================================================== -->
@@ -186,8 +422,14 @@
   (function () {
     "use strict";
 
+    // Configure PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
     // ----- DOM refs -----
     const apiKeyInput    = document.getElementById("apiKey");
+    const apiKeyToggle   = document.getElementById("apiKeyToggle");
+    const apiKeyPanel    = document.getElementById("apiKeyPanel");
+    const apiKeyChevron  = document.getElementById("apiKeyChevron");
     const toggleKeyBtn   = document.getElementById("toggleKey");
     const modeIndicator  = document.getElementById("modeIndicator");
     const resumeTextarea = document.getElementById("resumeText");
@@ -200,6 +442,30 @@
     const copyBtn        = document.getElementById("copyBtn");
     const downloadBtn    = document.getElementById("downloadBtn");
 
+    // Tab refs
+    const tabPdf         = document.getElementById("tabPdf");
+    const tabText        = document.getElementById("tabText");
+    const pdfPanel       = document.getElementById("pdfPanel");
+    const textPanel      = document.getElementById("textPanel");
+
+    // PDF upload refs
+    const dropZone       = document.getElementById("dropZone");
+    const dropZoneContent = document.getElementById("dropZoneContent");
+    const dropZoneFile   = document.getElementById("dropZoneFile");
+    const fileInput      = document.getElementById("fileInput");
+    const fileName       = document.getElementById("fileName");
+    const fileSize       = document.getElementById("fileSize");
+    const removeFileBtn  = document.getElementById("removeFile");
+    const pdfProgress    = document.getElementById("pdfProgress");
+    const pdfProgressLabel = document.getElementById("pdfProgressLabel");
+    const pdfProgressPercent = document.getElementById("pdfProgressPercent");
+    const pdfProgressBar = document.getElementById("pdfProgressBar");
+
+    // Step indicators
+    const step1Indicator = document.getElementById("step1Indicator");
+    const step2Indicator = document.getElementById("step2Indicator");
+    const step3Indicator = document.getElementById("step3Indicator");
+
     // Phase 2 DOM refs
     const portfolioSection     = document.getElementById("portfolioSection");
     const openGeneratorBtn     = document.getElementById("openGeneratorBtn");
@@ -211,13 +477,20 @@
     const portfolioPreview     = document.getElementById("portfolioPreview");
     const downloadPortfolioBtn = document.getElementById("downloadPortfolioBtn");
 
-    let extractedJSON = null; // holds the last successful extraction
-    let generatedHTML = null; // holds the last generated portfolio HTML
+    let extractedJSON = null;
+    let generatedHTML = null;
+    let uploadedPdfText = null; // text extracted from uploaded PDF
+    let currentFile = null;
+
+    // ----- API key collapsible -----
+    apiKeyToggle.addEventListener("click", () => {
+      const isHidden = apiKeyPanel.classList.contains("hidden");
+      apiKeyPanel.classList.toggle("hidden");
+      apiKeyChevron.style.transform = isHidden ? "rotate(180deg)" : "";
+    });
 
     // ----- API key persistence (sessionStorage) -----
     const STORAGE_KEY = "r2p_openai_key";
-
-    // Restore key from session
     const savedKey = sessionStorage.getItem(STORAGE_KEY);
     if (savedKey) {
       apiKeyInput.value = savedKey;
@@ -233,9 +506,9 @@
 
     function updateModeIndicator() {
       const hasKey = apiKeyInput.value.trim().length > 0;
-      modeIndicator.innerHTML = hasKey
-        ? 'Mode: <span class="text-green-400 font-medium">LLM (OpenAI GPT-3.5-turbo)</span>'
-        : 'Mode: <span class="text-amber-400 font-medium">Regex/Heuristic fallback</span> — paste an API key to use GPT extraction.';
+      modeIndicator.textContent = hasKey
+        ? "Using AI extraction (OpenAI GPT-3.5-turbo)"
+        : "Using regex/heuristic mode — add key for AI extraction";
     }
 
     // ----- Toggle key visibility -----
@@ -245,12 +518,148 @@
       toggleKeyBtn.textContent = isPassword ? "Hide" : "Show";
     });
 
-    // ----- Status helpers -----
+    // ================================================================
+    // TAB SWITCHING
+    // ================================================================
+    tabPdf.addEventListener("click", () => {
+      tabPdf.classList.add("active");
+      tabText.classList.remove("active");
+      pdfPanel.classList.remove("hidden");
+      textPanel.classList.add("hidden");
+    });
+
+    tabText.addEventListener("click", () => {
+      tabText.classList.add("active");
+      tabPdf.classList.remove("active");
+      textPanel.classList.remove("hidden");
+      pdfPanel.classList.add("hidden");
+    });
+
+    // ================================================================
+    // PDF DRAG & DROP + FILE UPLOAD
+    // ================================================================
+    dropZone.addEventListener("click", () => {
+      if (!currentFile) fileInput.click();
+    });
+
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    // Drag events
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("drag-over");
+    });
+
+    dropZone.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        handleFile(files[0]);
+      }
+    });
+
+    removeFileBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      currentFile = null;
+      uploadedPdfText = null;
+      fileInput.value = "";
+      dropZoneContent.classList.remove("hidden");
+      dropZoneFile.classList.add("hidden");
+      dropZone.classList.remove("has-file");
+      pdfProgress.classList.add("hidden");
+    });
+
+    function handleFile(file) {
+      if (file.type !== "application/pdf") {
+        showStatus("error", "Please upload a PDF file.");
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        showStatus("error", "File is too large. Maximum size is 10MB.");
+        return;
+      }
+
+      currentFile = file;
+      fileName.textContent = file.name;
+      fileSize.textContent = formatFileSize(file.size);
+      dropZoneContent.classList.add("hidden");
+      dropZoneFile.classList.remove("hidden");
+      dropZone.classList.add("has-file");
+      hideStatus();
+
+      // Auto-extract text from PDF
+      extractPdfText(file);
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    async function extractPdfText(file) {
+      pdfProgress.classList.remove("hidden");
+      pdfProgressBar.style.width = "0%";
+      pdfProgressLabel.textContent = "Reading PDF...";
+      pdfProgressPercent.textContent = "";
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        pdfProgressBar.style.width = "20%";
+        pdfProgressLabel.textContent = "Parsing PDF structure...";
+
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const totalPages = pdf.numPages;
+        let fullText = "";
+
+        for (let i = 1; i <= totalPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map(item => item.str).join(" ");
+          fullText += pageText + "\n";
+
+          const progress = 20 + Math.round((i / totalPages) * 70);
+          pdfProgressBar.style.width = progress + "%";
+          pdfProgressLabel.textContent = `Extracting page ${i} of ${totalPages}...`;
+          pdfProgressPercent.textContent = progress + "%";
+        }
+
+        pdfProgressBar.style.width = "100%";
+        pdfProgressLabel.textContent = "✓ Text extracted successfully";
+        pdfProgressPercent.textContent = `${totalPages} page${totalPages > 1 ? "s" : ""}`;
+
+        uploadedPdfText = fullText.trim();
+
+        if (!uploadedPdfText) {
+          showStatus("error", "Could not extract text from this PDF. It may be image-based. Try pasting the text manually.");
+          pdfProgressLabel.textContent = "⚠ No text found in PDF";
+        }
+      } catch (err) {
+        showStatus("error", "Failed to read PDF: " + err.message);
+        pdfProgressLabel.textContent = "✗ Extraction failed";
+        pdfProgressBar.style.width = "100%";
+        pdfProgressBar.style.background = "#ef4444";
+      }
+    }
+
+    // ================================================================
+    // STATUS HELPERS
+    // ================================================================
     function showStatus(type, message) {
-      statusMsg.className = "text-sm rounded-lg px-4 py-3 " + ({
-        success: "bg-green-900/40 border border-green-700 text-green-300",
-        error:   "bg-red-900/40 border border-red-700 text-red-300",
-        info:    "bg-blue-900/40 border border-blue-700 text-blue-300",
+      statusMsg.className = "text-sm rounded-xl px-5 py-3.5 fade-enter " + ({
+        success: "bg-green-500/10 border border-green-500/20 text-green-400",
+        error:   "bg-red-500/10 border border-red-500/20 text-red-400",
+        info:    "bg-blue-500/10 border border-blue-500/20 text-blue-400",
       }[type] || "");
       statusMsg.textContent = message;
       statusMsg.classList.remove("hidden");
@@ -260,16 +669,49 @@
       statusMsg.classList.add("hidden");
     }
 
+    // ================================================================
+    // STEP INDICATOR UPDATES
+    // ================================================================
+    function setStep(step) {
+      const indicators = [step1Indicator, step2Indicator, step3Indicator];
+      indicators.forEach((el, i) => {
+        const num = i + 1;
+        if (num < step) {
+          el.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20";
+          el.querySelector("span").className = "w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center text-[10px] font-bold";
+        } else if (num === step) {
+          el.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20";
+          el.querySelector("span").className = "w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center text-[10px] font-bold";
+        } else {
+          el.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-gray-600";
+          el.querySelector("span").className = "w-5 h-5 rounded-full bg-gray-800 flex items-center justify-center text-[10px] font-bold";
+        }
+      });
+    }
+
     // ----- Extract button -----
     extractBtn.addEventListener("click", async () => {
-      const text = resumeTextarea.value.trim();
-      if (!text) {
-        showStatus("error", "Please paste your resume text first.");
-        return;
+      // Determine text source: PDF upload or text paste
+      const isPdfTab = !pdfPanel.classList.contains("hidden");
+      let text;
+
+      if (isPdfTab) {
+        if (!uploadedPdfText) {
+          showStatus("error", currentFile ? "PDF text extraction is still in progress or failed. Please wait or try pasting text." : "Please upload a PDF file first.");
+          return;
+        }
+        text = uploadedPdfText;
+      } else {
+        text = resumeTextarea.value.trim();
+        if (!text) {
+          showStatus("error", "Please paste your resume text first.");
+          return;
+        }
       }
 
       hideStatus();
       setLoading(true);
+      setStep(2);
 
       try {
         const apiKey = apiKeyInput.value.trim();
@@ -284,17 +726,19 @@
         extractedJSON = result;
         renderJSON(result);
         resultsSection.classList.remove("hidden");
-        // Show Phase 2 portfolio section
         portfolioSection.classList.remove("hidden");
         generatorPanel.classList.add("hidden");
         previewPanel.classList.add("hidden");
+        setStep(3);
         showStatus("success", apiKey
           ? "✓ Extracted via OpenAI GPT-3.5-turbo"
-          : "✓ Extracted via regex/heuristic parsing (best-effort)");
+          : "✓ Extracted via regex/heuristic parsing");
+        resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (err) {
         showStatus("error", "Extraction failed: " + err.message);
         resultsSection.classList.add("hidden");
         portfolioSection.classList.add("hidden");
+        setStep(1);
       } finally {
         setLoading(false);
       }
@@ -302,7 +746,7 @@
 
     function setLoading(on) {
       extractBtn.disabled = on;
-      extractLabel.textContent = on ? "Extracting…" : "Extract JSON";
+      extractLabel.textContent = on ? "Extracting…" : "Extract Resume Data";
       extractSpinner.classList.toggle("hidden", !on);
     }
 
@@ -383,7 +827,6 @@ Rules:
 
       if (!content) throw new Error("Empty response from API");
 
-      // Strip markdown code fences if present
       const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
 
       try {
@@ -400,7 +843,6 @@ Rules:
       const lines = text.split(/\n/);
       const trimmedLines = lines.map(l => l.trim()).filter(Boolean);
 
-      // -- Helper: find lines matching a regex --
       const findFirst = (regex) => {
         for (const line of trimmedLines) {
           const m = line.match(regex);
@@ -409,12 +851,8 @@ Rules:
         return null;
       };
 
-      // -- Helper: find all text in a section --
       const sectionHeaders = /^(summary|objective|profile|about|experience|work\s*experience|employment|education|academic|skills|technical\s*skills|core\s*competencies|projects|certifications?|awards?|publications?|volunteer)/i;
 
-      /**
-       * getSectionContent returns lines between a section header and the next section header.
-       */
       function getSectionContent(sectionRegex) {
         const content = [];
         let capturing = false;
@@ -442,7 +880,6 @@ Rules:
       const linkedinMatch = findFirst(/((?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+\/?)/i);
       const githubMatch = findFirst(/((?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+\/?)/i);
 
-      // Name: usually the first non-empty line that isn't an email/phone/url
       let name = "";
       let title = "";
       for (const line of trimmedLines) {
@@ -451,16 +888,13 @@ Rules:
         if (/^\+?\d[\d\s\-().]{7,}/.test(line)) continue;
         if (sectionHeaders.test(line)) break;
         if (!name) { name = line; continue; }
-        // Second qualifying line is likely the title
         if (!title && !/[|•·,]/.test(line.charAt(0))) {
-          // Could be title or contact line — skip if it looks like contact info
           if (/\d{3}/.test(line) || /@/.test(line)) continue;
           title = line;
           break;
         }
       }
 
-      // Location: look for common patterns like "City, ST" or "City, State"
       const locationMatch = findFirst(/([A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s+\d{5})?)/);
       const location = locationMatch ? locationMatch[1] : "";
 
@@ -474,33 +908,24 @@ Rules:
         location: location,
       };
 
-      // ---- SUMMARY ----
       const summaryLines = getSectionContent(/^(summary|objective|profile|about)\s*:?\s*$/i);
       const summary = summaryLines.filter(Boolean).join(" ");
 
-      // ---- EXPERIENCE ----
       const expLines = getSectionContent(/^(experience|work\s*experience|employment|professional\s*experience)\s*:?\s*$/i);
       const experience = parseExperience(expLines);
 
-      // ---- EDUCATION ----
       const eduLines = getSectionContent(/^(education|academic)\s*:?\s*$/i);
       const education = parseEducation(eduLines);
 
-      // ---- SKILLS ----
       const skillLines = getSectionContent(/^(skills|technical\s*skills|core\s*competencies|technologies)\s*:?\s*$/i);
       const skills = parseSkills(skillLines);
 
-      // ---- PROJECTS ----
       const projLines = getSectionContent(/^(projects|personal\s*projects|side\s*projects)\s*:?\s*$/i);
       const projects = parseProjects(projLines);
 
       return { personal, summary, experience, education, skills, projects };
     }
 
-    /**
-     * Parse experience section lines into structured entries.
-     * Heuristic: lines with date ranges start a new entry; bullet lines are achievements.
-     */
     function parseExperience(lines) {
       if (!lines.length) return [];
 
@@ -515,11 +940,9 @@ Rules:
 
         const dateMatch = line.match(dateRangeRe);
 
-        // If line has a date range, it's likely a new entry header
         if (dateMatch && !bulletRe.test(line)) {
           if (current) entries.push(current);
 
-          // Try to parse "Role | Company | dates" or "Role — Company (dates)" etc.
           const cleaned = line.replace(dateRangeRe, "").replace(/[()]/g, "").trim();
           const parts = cleaned.split(/\s*[—–|@]\s*/).map(s => s.trim()).filter(Boolean);
 
@@ -532,7 +955,6 @@ Rules:
           continue;
         }
 
-        // If no current entry yet but line looks like a company/role header
         if (!current && !bulletRe.test(line)) {
           const parts = line.split(/\s*[—–|@]\s*/).map(s => s.trim()).filter(Boolean);
           if (parts.length >= 1) {
@@ -546,11 +968,9 @@ Rules:
           }
         }
 
-        // Bullet point → achievement
         if (current && bulletRe.test(line)) {
           current.achievements.push(line.replace(bulletRe, "").trim());
         } else if (current && line.length > 10) {
-          // Long non-bullet line might be an achievement too
           current.achievements.push(line);
         }
       }
@@ -559,9 +979,6 @@ Rules:
       return entries;
     }
 
-    /**
-     * Parse education section.
-     */
     function parseEducation(lines) {
       if (!lines.length) return [];
 
@@ -572,7 +989,6 @@ Rules:
       for (const line of lines) {
         if (!line) continue;
 
-        // Lines with degree keywords or institution names start new entries
         const hasDegree = /\b(B\.?S\.?|B\.?A\.?|B\.?Tech|M\.?S\.?|M\.?A\.?|M\.?Tech|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(line);
         const hasYear = yearRe.test(line);
 
@@ -584,17 +1000,14 @@ Rules:
             year: "",
           };
 
-          // Split on pipe delimiters only (not hyphens, to preserve compound names)
           const segments = line.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
 
           if (segments.length >= 3) {
-            // Pattern: Degree | Institution | Year
             current.degree = segments[0];
             current.institution = segments[1];
             const ym = segments[2].match(yearRe);
             current.year = ym ? ym[1] : segments[2];
           } else if (segments.length === 2) {
-            // Pattern: Degree | Institution  (year may be embedded)
             const ym0 = segments[0].match(yearRe);
             const ym1 = segments[1].match(yearRe);
             if (hasDegree) {
@@ -611,7 +1024,6 @@ Rules:
             }
             current.year = (ym1 ? ym1[1] : "") || (ym0 ? ym0[1] : "");
           } else {
-            // Single segment — try splitting on dash/comma as fallback
             const parts = line.replace(/[()]/g, " ").replace(/\d{4}\s*[-–—]?\s*\d{0,4}/, "").trim();
             const subSegments = parts.split(/\s*[—–,]\s*/).map(s => s.trim()).filter(Boolean);
             const yearMatch = line.match(yearRe);
@@ -626,7 +1038,6 @@ Rules:
           continue;
         }
 
-        // Continuation line
         if (current) {
           if (!current.institution && !hasDegree) current.institution = line;
           else if (!current.degree) current.degree = line;
@@ -638,13 +1049,9 @@ Rules:
       return entries;
     }
 
-    /**
-     * Parse skills: split by commas, pipes, bullets, semicolons.
-     */
     function parseSkills(lines) {
       if (!lines.length) return [];
       const text = lines.join(" ");
-      // Remove sub-headers like "Languages:", "Frameworks:", etc.
       const cleaned = text.replace(/[A-Za-z\s]+:/g, ",");
       return cleaned
         .split(/[,;|•·▪►]\s*/)
@@ -652,9 +1059,6 @@ Rules:
         .filter(s => s.length > 0 && s.length < 60);
     }
 
-    /**
-     * Parse projects section.
-     */
     function parseProjects(lines) {
       if (!lines.length) return [];
 
@@ -667,45 +1071,38 @@ Rules:
       for (const line of lines) {
         if (!line) continue;
 
-        // Check if this line is a metadata/continuation line for the current project
         if (current) {
           const clean = line.replace(bulletRe, "").trim();
 
-          // Tech Stack / Technologies line → extract into technologies array
           if (/^(Tech\s*Stack|Technologies|Built\s*with)\s*:/i.test(clean)) {
             const techs = clean.replace(/^[^:]+:\s*/, "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
             current.technologies.push(...techs);
             continue;
           }
 
-          // GitHub / Link / URL line → extract link
           if (/^(GitHub|Link|URL|Demo|Live|Source)\s*:/i.test(clean)) {
             const urlMatch = clean.replace(/^[^:]+:\s*/, "").trim();
             if (urlMatch && !current.link) current.link = urlMatch;
             continue;
           }
 
-          // Bare URL on its own line
           const bareUrl = clean.match(urlRe);
           if (bareUrl && clean === bareUrl[0]) {
             if (!current.link) current.link = bareUrl[0];
             continue;
           }
 
-          // Features line → add to description
           if (/^Features\s*:/i.test(clean)) {
             current.description += (current.description ? " " : "") + clean;
             continue;
           }
 
-          // Bullet point or longer description line → append to description
           if (bulletRe.test(line) || line.length >= 80) {
             current.description += (current.description ? " " : "") + clean;
             continue;
           }
         }
 
-        // Short non-bullet, non-meta line → start a new project
         if (!bulletRe.test(line) && !metaLineRe.test(line) && line.length < 80) {
           if (current) entries.push(current);
           const urlMatch = line.match(urlRe);
@@ -719,7 +1116,6 @@ Rules:
           continue;
         }
 
-        // If no current project yet, treat as description
         if (current) {
           const clean = line.replace(bulletRe, "").trim();
           current.description += (current.description ? " " : "") + clean;
@@ -735,22 +1131,15 @@ Rules:
     // ================================================================
     function renderJSON(obj) {
       const raw = JSON.stringify(obj, null, 2);
-      // Syntax highlight
       const highlighted = raw
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        // Keys
         .replace(/"([^"]+)"(?=\s*:)/g, '<span class="json-key">"$1"</span>')
-        // String values
         .replace(/:\s*"([^"]*)"/g, ': <span class="json-string">"$1"</span>')
-        // Numbers
         .replace(/:\s*(\d+)/g, ': <span class="json-number">$1</span>')
-        // Booleans
         .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
-        // Null
         .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
-        // Brackets
         .replace(/([[\]{}])/g, '<span class="json-bracket">$1</span>');
 
       jsonOutput.innerHTML = highlighted;
@@ -786,23 +1175,20 @@ Rules:
     // ================================================================
     // PHASE 2: PORTFOLIO GENERATION
     // ================================================================
-
-    // Open generator panel
     openGeneratorBtn.addEventListener("click", () => {
       generatorPanel.classList.remove("hidden");
       openGeneratorBtn.textContent = "↓ Choose a template below";
       openGeneratorBtn.disabled = true;
       openGeneratorBtn.classList.add("opacity-50", "cursor-not-allowed");
+      openGeneratorBtn.style.boxShadow = "none";
     });
 
-    // Generate website
     generateWebsiteBtn.addEventListener("click", () => {
       if (!extractedJSON) return;
       genLabel.textContent = "Generating…";
       genSpinner.classList.remove("hidden");
       generateWebsiteBtn.disabled = true;
 
-      // Use setTimeout to allow UI to update
       setTimeout(() => {
         try {
           generatedHTML = generateMinimalistPortfolio(extractedJSON);
@@ -810,7 +1196,6 @@ Rules:
           previewPanel.classList.remove("hidden");
           genLabel.textContent = "✓ Generated!";
           genSpinner.classList.add("hidden");
-          // Scroll to preview
           previewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (err) {
           showStatus("error", "Portfolio generation failed: " + err.message);
@@ -821,7 +1206,6 @@ Rules:
       }, 100);
     });
 
-    // Download portfolio HTML
     downloadPortfolioBtn.addEventListener("click", () => {
       if (!generatedHTML) return;
       const blob = new Blob([generatedHTML], { type: "text/html" });
@@ -862,13 +1246,11 @@ Rules:
         return href;
       }
 
-      // Build social links HTML
       let socialHTML = "";
       if (email) socialHTML += `<a href="mailto:${escHTML(email)}" class="text-gray-400 hover:text-blue-400 transition-colors"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> <span class="ml-1">${escHTML(email)}</span></a>`;
       if (linkedin) socialHTML += `<a href="${makeLink(linkedin)}" target="_blank" class="text-gray-400 hover:text-blue-400 transition-colors"><svg class="w-5 h-5 inline" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg> <span class="ml-1">LinkedIn</span></a>`;
       if (github) socialHTML += `<a href="${makeLink(github)}" target="_blank" class="text-gray-400 hover:text-blue-400 transition-colors"><svg class="w-5 h-5 inline" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg> <span class="ml-1">GitHub</span></a>`;
 
-      // Experience HTML
       let expHTML = "";
       experience.forEach(exp => {
         const achievements = (exp.achievements || []).map(a => `<li class="text-gray-400 text-sm leading-relaxed">${escHTML(a)}</li>`).join("");
@@ -884,7 +1266,6 @@ Rules:
           </div>`;
       });
 
-      // Projects HTML
       let projHTML = "";
       projects.forEach(proj => {
         const techs = (proj.technologies || []).map(t => `<span class="px-2 py-1 bg-gray-800 text-blue-400 text-xs rounded-full">${escHTML(t)}</span>`).join("");
@@ -898,10 +1279,8 @@ Rules:
           </div>`;
       });
 
-      // Skills HTML
       const skillsHTML = skills.map(s => `<span class="fade-in px-4 py-2 bg-gray-900/50 border border-gray-800 text-gray-300 text-sm rounded-full hover:border-blue-500/50 transition-colors">${escHTML(s)}</span>`).join("");
 
-      // Education HTML
       let eduHTML = "";
       education.forEach(edu => {
         eduHTML += `
