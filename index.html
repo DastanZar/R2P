@@ -3,23 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>R2P — Resume to Portfolio JSON Extractor</title>
+  <title>R2P — Resume to Portfolio</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
-    /* Custom scrollbar for pre blocks */
-    pre::-webkit-scrollbar { width: 8px; height: 8px; }
-    pre::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
-    pre::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-    pre::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
     /* Spinner animation */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner {
-      width: 24px; height: 24px;
-      border: 3px solid #e2e8f0;
-      border-top-color: #6366f1;
+      width: 20px; height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.2);
+      border-top-color: #818cf8;
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
+      display: inline-block;
     }
 
     /* JSON syntax highlighting */
@@ -29,74 +31,358 @@
     .json-boolean { color: #f9a8d4; }
     .json-null { color: #a5b4fc; }
     .json-bracket { color: #cbd5e1; }
+
+    /* Fade-in animation */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
+    .animate-fade-in-delay-1 { animation: fadeInUp 0.5s ease-out 0.1s forwards; opacity: 0; }
+    .animate-fade-in-delay-2 { animation: fadeInUp 0.5s ease-out 0.2s forwards; opacity: 0; }
+    .animate-fade-in-delay-3 { animation: fadeInUp 0.5s ease-out 0.3s forwards; opacity: 0; }
+
+    /* Pulse glow for drop zone */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+      50% { box-shadow: 0 0 30px 4px rgba(99, 102, 241, 0.15); }
+    }
+    .drop-zone-idle { animation: pulseGlow 3s ease-in-out infinite; }
+    .drop-zone-active {
+      border-color: #818cf8 !important;
+      background: rgba(99, 102, 241, 0.08) !important;
+      box-shadow: 0 0 40px 8px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Progress stepper */
+    .step-active .step-circle { background: #6366f1; color: #fff; box-shadow: 0 0 16px rgba(99,102,241,0.4); }
+    .step-complete .step-circle { background: #22c55e; color: #fff; }
+    .step-inactive .step-circle { background: #1e293b; color: #64748b; border: 2px solid #334155; }
+    .step-connector { height: 2px; flex: 1; }
+    .step-connector-active { background: linear-gradient(90deg, #6366f1, #22c55e); }
+    .step-connector-inactive { background: #1e293b; }
+
+    /* Card hover effect */
+    .stat-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+
+    /* Toggle switch */
+    .toggle-switch {
+      width: 44px; height: 24px;
+      background: #334155;
+      border-radius: 12px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .toggle-switch.active { background: #6366f1; }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      top: 3px; left: 3px;
+      transition: transform 0.3s;
+    }
+    .toggle-switch.active::after { transform: translateX(20px); }
+
+    /* Smooth section transitions */
+    .section-hidden { display: none; }
+    .section-visible { display: block; }
+
+    /* Gradient text */
+    .gradient-text {
+      background: linear-gradient(135deg, #818cf8, #c084fc, #f472b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* File info badge */
+    .file-badge {
+      background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(168,85,247,0.15));
+      border: 1px solid rgba(99,102,241,0.3);
+    }
   </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body class="bg-[#0a0f1a] text-gray-100 min-h-screen">
 
   <!-- ===== HEADER ===== -->
-  <header class="border-b border-gray-800 bg-gray-900/80 backdrop-blur sticky top-0 z-10">
-    <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-      <h1 class="text-xl font-bold tracking-tight">
-        <span class="text-indigo-400">R2P</span>
-        <span class="text-gray-400 font-normal text-sm ml-2">Resume → Portfolio</span>
-      </h1>
-      <span class="text-xs text-gray-500">Phase 1 &amp; 2: JSON → Portfolio</span>
+  <header class="border-b border-gray-800/60 bg-[#0a0f1a]/90 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">R</div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white">R2P</h1>
+          <p class="text-[10px] text-gray-500 -mt-0.5">Resume → Portfolio</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="advancedModeToggle" class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded border border-transparent hover:border-gray-700" title="Switch to text paste mode">
+          ⌨ Text Mode
+        </button>
+        <span class="text-[10px] text-gray-600 hidden sm:inline">Phase 3A</span>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
 
-    <!-- ===== API KEY INPUT (optional) ===== -->
-    <section class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-      <label for="apiKey" class="block text-sm font-medium text-gray-300 mb-1">
-        OpenAI API Key <span class="text-gray-500">(optional — enables LLM extraction)</span>
-      </label>
-      <div class="flex gap-3">
-        <input
-          id="apiKey"
-          type="password"
-          placeholder="sk-..."
-          class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-        <button
-          id="toggleKey"
-          class="text-xs text-gray-400 hover:text-gray-200 px-2"
-          title="Show / hide key"
-        >Show</button>
+    <!-- ===== HERO / UPLOAD SECTION ===== -->
+    <section id="heroSection" class="animate-fade-in">
+
+      <!-- Hero text -->
+      <div class="text-center mb-10 pt-4">
+        <h2 class="text-3xl sm:text-4xl font-extrabold text-white mb-3">
+          Turn your resume into a <span class="gradient-text">portfolio</span>
+        </h2>
+        <p class="text-gray-400 text-sm sm:text-base max-w-xl mx-auto">
+          Upload a PDF or DOCX resume, and we'll extract your data and generate a beautiful portfolio site — all in your browser.
+        </p>
       </div>
-      <p id="modeIndicator" class="mt-2 text-xs text-gray-500">
-        Mode: <span class="text-amber-400 font-medium">Regex/Heuristic fallback</span> — paste an API key to use GPT extraction.
-      </p>
+
+      <!-- Progress Stepper -->
+      <div id="progressStepper" class="flex items-center justify-center gap-0 max-w-md mx-auto mb-10 animate-fade-in-delay-1">
+        <div id="step1" class="flex flex-col items-center step-active">
+          <div class="step-circle w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300">1</div>
+          <span class="text-[11px] mt-1.5 text-gray-400 font-medium">Upload</span>
+        </div>
+        <div id="connector1" class="step-connector step-connector-inactive mx-2 rounded-full"></div>
+        <div id="step2" class="flex flex-col items-center step-inactive">
+          <div class="step-circle w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300">2</div>
+          <span class="text-[11px] mt-1.5 text-gray-500 font-medium">Extract</span>
+        </div>
+        <div id="connector2" class="step-connector step-connector-inactive mx-2 rounded-full"></div>
+        <div id="step3" class="flex flex-col items-center step-inactive">
+          <div class="step-circle w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300">3</div>
+          <span class="text-[11px] mt-1.5 text-gray-500 font-medium">Generate</span>
+        </div>
+      </div>
+
+      <!-- Drop Zone -->
+      <div
+        id="dropZone"
+        class="drop-zone-idle relative border-2 border-dashed border-gray-700 rounded-2xl p-10 sm:p-14 text-center cursor-pointer transition-all duration-300 hover:border-indigo-500/50 bg-gray-900/30 animate-fade-in-delay-2"
+      >
+        <input type="file" id="fileInput" accept=".pdf,.docx" class="hidden" />
+        <div id="dropZoneContent">
+          <div class="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+            <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+            </svg>
+          </div>
+          <p class="text-white font-semibold text-lg mb-1">Drop your resume here</p>
+          <p class="text-gray-500 text-sm mb-4">or <span class="text-indigo-400 hover:text-indigo-300 underline underline-offset-2">browse files</span></p>
+          <div class="flex items-center justify-center gap-4 text-xs text-gray-600">
+            <span class="flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/></svg>
+              PDF, DOCX
+            </span>
+            <span>•</span>
+            <span>Max 5 MB</span>
+          </div>
+        </div>
+        <!-- File selected state -->
+        <div id="fileSelectedState" class="hidden">
+          <div class="file-badge inline-flex items-center gap-3 px-5 py-3 rounded-xl mb-4">
+            <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>
+            </svg>
+            <div class="text-left">
+              <p id="fileName" class="text-white font-medium text-sm"></p>
+              <p id="fileSize" class="text-gray-500 text-xs"></p>
+            </div>
+            <button id="removeFileBtn" class="ml-2 text-gray-500 hover:text-red-400 transition-colors" title="Remove file">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div>
+            <button id="extractFileBtn" class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-8 py-3 rounded-xl text-sm transition-all duration-200 flex items-center gap-2 mx-auto shadow-lg shadow-indigo-500/20">
+              <span id="extractFileLabel">Extract Resume Data</span>
+              <div id="extractFileSpinner" class="spinner hidden"></div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error message area -->
+      <div id="uploadError" class="hidden mt-4 text-sm rounded-xl px-4 py-3 bg-red-900/30 border border-red-700/50 text-red-300 text-center"></div>
+
     </section>
 
-    <!-- ===== RESUME INPUT ===== -->
-    <section class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-      <label for="resumeText" class="block text-sm font-medium text-gray-300 mb-2">
-        Paste your resume as plain text
-      </label>
-      <textarea
-        id="resumeText"
-        rows="14"
-        placeholder="John Doe&#10;Software Engineer&#10;john@example.com | (555) 123-4567&#10;linkedin.com/in/johndoe | github.com/johndoe&#10;San Francisco, CA&#10;&#10;SUMMARY&#10;Experienced software engineer with 5+ years...&#10;&#10;EXPERIENCE&#10;Senior Developer — Acme Corp (Jan 2021 – Present)&#10;• Led migration of monolith to microservices&#10;• Reduced API latency by 40%&#10;..."
-        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-y"
-      ></textarea>
-      <div class="flex justify-end mt-3">
-        <button
-          id="extractBtn"
-          class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span id="extractLabel">Extract JSON</span>
-          <div id="extractSpinner" class="spinner hidden"></div>
-        </button>
+    <!-- ===== API KEY INPUT (collapsible) ===== -->
+    <section id="apiKeySection" class="mt-6 animate-fade-in-delay-3">
+      <details class="bg-gray-900/50 rounded-xl border border-gray-800/60 overflow-hidden">
+        <summary class="px-5 py-3 cursor-pointer text-sm text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+          OpenAI API Key <span class="text-gray-600">(optional — enables AI extraction)</span>
+        </summary>
+        <div class="px-5 pb-4 pt-1">
+          <div class="flex gap-3">
+            <input
+              id="apiKey"
+              type="password"
+              placeholder="sk-..."
+              class="flex-1 bg-gray-800/80 border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent"
+            />
+            <button
+              id="toggleKey"
+              class="text-xs text-gray-500 hover:text-gray-300 px-3 py-2 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors"
+              title="Show / hide key"
+            >Show</button>
+          </div>
+          <p id="modeIndicator" class="mt-2 text-xs text-gray-500">
+            Mode: <span class="text-amber-400 font-medium">Regex/Heuristic fallback</span> — paste an API key to use GPT extraction.
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ===== ADVANCED TEXT PASTE MODE (hidden by default) ===== -->
+    <section id="textPasteSection" class="hidden mt-6">
+      <div class="bg-gray-900/50 rounded-xl p-5 border border-gray-800/60">
+        <div class="flex items-center justify-between mb-3">
+          <label for="resumeText" class="block text-sm font-medium text-gray-300">
+            Paste your resume as plain text
+          </label>
+          <button id="backToUploadBtn" class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+            ← Back to upload
+          </button>
+        </div>
+        <textarea
+          id="resumeText"
+          rows="14"
+          placeholder="John Doe&#10;Software Engineer&#10;john@example.com | (555) 123-4567&#10;linkedin.com/in/johndoe | github.com/johndoe&#10;San Francisco, CA&#10;&#10;SUMMARY&#10;Experienced software engineer with 5+ years...&#10;&#10;EXPERIENCE&#10;Senior Developer — Acme Corp (Jan 2021 – Present)&#10;• Led migration of monolith to microservices&#10;• Reduced API latency by 40%&#10;..."
+          class="w-full bg-gray-800/80 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent resize-y"
+        ></textarea>
+        <div class="flex justify-end mt-3">
+          <button
+            id="extractBtn"
+            class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span id="extractLabel">Extract JSON</span>
+            <div id="extractSpinner" class="spinner hidden"></div>
+          </button>
+        </div>
       </div>
     </section>
 
     <!-- ===== STATUS MESSAGE ===== -->
-    <div id="statusMsg" class="hidden text-sm rounded-lg px-4 py-3"></div>
+    <div id="statusMsg" class="hidden text-sm rounded-xl px-4 py-3 mt-6"></div>
 
-    <!-- ===== RESULTS ===== -->
-    <section id="resultsSection" class="hidden bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+    <!-- ===== EXTRACTION PROGRESS ===== -->
+    <div id="extractionProgress" class="hidden mt-6">
+      <div class="bg-gray-900/50 rounded-xl p-6 border border-gray-800/60">
+        <div class="flex items-center gap-4">
+          <div class="spinner"></div>
+          <div>
+            <p id="extractionProgressText" class="text-white text-sm font-medium">Extracting text from PDF...</p>
+            <p class="text-gray-500 text-xs mt-0.5">This may take a moment</p>
+          </div>
+        </div>
+        <div class="mt-4 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div id="extractionProgressBar" class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== DASHBOARD (shown after extraction) ===== -->
+    <section id="dashboardSection" class="hidden mt-8 space-y-6">
+
+      <!-- Overview Stats Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-in">
+        <div class="stat-card bg-gray-900/60 rounded-xl p-4 border border-gray-800/60">
+          <p class="text-xs text-gray-500 mb-1">Experience</p>
+          <p id="statExperience" class="text-2xl font-bold text-white">0</p>
+          <p class="text-[10px] text-gray-600">positions</p>
+        </div>
+        <div class="stat-card bg-gray-900/60 rounded-xl p-4 border border-gray-800/60">
+          <p class="text-xs text-gray-500 mb-1">Skills</p>
+          <p id="statSkills" class="text-2xl font-bold text-white">0</p>
+          <p class="text-[10px] text-gray-600">technologies</p>
+        </div>
+        <div class="stat-card bg-gray-900/60 rounded-xl p-4 border border-gray-800/60">
+          <p class="text-xs text-gray-500 mb-1">Projects</p>
+          <p id="statProjects" class="text-2xl font-bold text-white">0</p>
+          <p class="text-[10px] text-gray-600">showcased</p>
+        </div>
+        <div class="stat-card bg-gray-900/60 rounded-xl p-4 border border-gray-800/60">
+          <p class="text-xs text-gray-500 mb-1">Education</p>
+          <p id="statEducation" class="text-2xl font-bold text-white">0</p>
+          <p class="text-[10px] text-gray-600">degrees</p>
+        </div>
+      </div>
+
+      <!-- AI Enhance + Template Selector Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <!-- AI Enhance Toggle Card -->
+        <div class="bg-gray-900/60 rounded-xl p-5 border border-gray-800/60">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">✨</span>
+              <h3 class="text-sm font-medium text-white">AI Enhance</h3>
+            </div>
+            <div id="aiEnhanceToggle" class="toggle-switch" title="Requires OpenAI API key"></div>
+          </div>
+          <p class="text-xs text-gray-500">Use GPT to polish summaries and achievements. Requires an API key.</p>
+          <p id="aiEnhanceStatus" class="text-[10px] text-gray-600 mt-2">Status: Off</p>
+        </div>
+
+        <!-- Template Selector Card -->
+        <div class="bg-gray-900/60 rounded-xl p-5 border border-gray-800/60">
+          <h3 class="text-sm font-medium text-white mb-3 flex items-center gap-2">
+            <span class="text-lg">🎨</span> Template
+          </h3>
+          <div class="space-y-2">
+            <label class="relative cursor-pointer block">
+              <input type="radio" name="template" value="minimalist" checked class="peer sr-only" />
+              <div class="border border-gray-700 peer-checked:border-indigo-500 peer-checked:bg-indigo-500/5 rounded-lg px-4 py-2.5 transition-all duration-200 flex items-center gap-3">
+                <span class="text-base">🖤</span>
+                <div>
+                  <p class="text-xs font-medium text-white">Minimalist Dark</p>
+                  <p class="text-[10px] text-gray-500">Clean, modern, Inter font</p>
+                </div>
+              </div>
+            </label>
+            <!-- Future templates -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button
+          id="generateWebsiteBtn"
+          class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium px-6 py-3 rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+        >
+          <span id="genLabel">🚀 Generate Portfolio</span>
+          <div id="genSpinner" class="spinner hidden"></div>
+        </button>
+        <button
+          id="viewJsonBtn"
+          class="px-6 py-3 rounded-xl text-sm font-medium border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 transition-all duration-200"
+        >
+          { } View JSON
+        </button>
+        <button
+          id="startOverBtn"
+          class="px-6 py-3 rounded-xl text-sm font-medium border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 transition-all duration-200"
+        >
+          ↺ Start Over
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== JSON RESULTS (hidden by default, toggled via View JSON) ===== -->
+    <section id="resultsSection" class="hidden mt-6 bg-gray-900/60 rounded-xl border border-gray-800/60 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800/60">
         <h2 class="text-sm font-medium text-gray-300">Extracted JSON</h2>
         <div class="flex gap-2">
           <button id="copyBtn" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-md transition-colors">
@@ -105,78 +391,36 @@
           <button id="downloadBtn" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-md transition-colors">
             ⬇ Download
           </button>
+          <button id="hideJsonBtn" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-md transition-colors">
+            ✕ Hide
+          </button>
         </div>
       </div>
-      <pre id="jsonOutput" class="p-5 text-sm leading-relaxed overflow-x-auto bg-gray-950 max-h-[600px] overflow-y-auto"></pre>
+      <pre id="jsonOutput" class="p-5 text-sm leading-relaxed overflow-x-auto bg-[#060a14] max-h-[500px] overflow-y-auto"></pre>
     </section>
 
-    <!-- ===== PHASE 2: PORTFOLIO GENERATOR ===== -->
-    <section id="portfolioSection" class="hidden space-y-6">
-
-      <!-- Generate Portfolio CTA -->
-      <div class="bg-gradient-to-r from-indigo-900/40 to-purple-900/40 rounded-xl p-6 border border-indigo-700/50 text-center">
-        <h2 class="text-lg font-semibold text-white mb-2">🚀 Ready to generate your portfolio?</h2>
-        <p class="text-sm text-gray-400 mb-4">Turn the extracted JSON into a beautiful single-page portfolio website.</p>
+    <!-- ===== PORTFOLIO PREVIEW ===== -->
+    <section id="previewPanel" class="hidden mt-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-medium text-gray-300">Portfolio Preview</h3>
         <button
-          id="openGeneratorBtn"
-          class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors"
+          id="downloadPortfolioBtn"
+          class="bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
         >
-          Generate Portfolio
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          Download HTML
         </button>
       </div>
-
-      <!-- Generator Options Panel (hidden until button clicked) -->
-      <div id="generatorPanel" class="hidden bg-gray-900 rounded-xl p-6 border border-gray-800 space-y-5">
-        <h3 class="text-sm font-medium text-gray-300">Choose a Template</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label class="relative cursor-pointer">
-            <input type="radio" name="template" value="minimalist" checked class="peer sr-only" />
-            <div class="border-2 border-gray-700 peer-checked:border-indigo-500 rounded-lg p-4 transition-colors">
-              <div class="flex items-center gap-3">
-                <span class="text-2xl">🖤</span>
-                <div>
-                  <p class="text-sm font-medium text-white">Minimalist</p>
-                  <p class="text-xs text-gray-500">Dark, clean, modern — Inter font, smooth animations</p>
-                </div>
-              </div>
-            </div>
-          </label>
-          <!-- Future templates can be added here -->
-        </div>
-        <div class="flex justify-end">
-          <button
-            id="generateWebsiteBtn"
-            class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2"
-          >
-            <span id="genLabel">Generate Website</span>
-            <div id="genSpinner" class="spinner hidden"></div>
-          </button>
-        </div>
+      <div class="rounded-xl overflow-hidden border border-gray-700/60 bg-white">
+        <iframe id="portfolioPreview" class="w-full" style="height:600px;" sandbox="allow-scripts"></iframe>
       </div>
-
-      <!-- Preview & Download -->
-      <div id="previewPanel" class="hidden space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-medium text-gray-300">Portfolio Preview</h3>
-          <button
-            id="downloadPortfolioBtn"
-            class="bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors"
-          >
-            ⬇ Download Portfolio HTML
-          </button>
-        </div>
-        <div class="rounded-xl overflow-hidden border border-gray-700 bg-white">
-          <iframe id="portfolioPreview" class="w-full" style="height:600px;" sandbox="allow-scripts"></iframe>
-        </div>
-      </div>
-
     </section>
 
   </main>
 
   <!-- ===== FOOTER ===== -->
-  <footer class="text-center text-xs text-gray-600 py-8">
-    R2P Phase 1 &amp; 2 — JSON Extraction &amp; Portfolio Generation &middot; No data leaves your browser (unless using LLM mode)
+  <footer class="text-center text-xs text-gray-600 py-8 mt-8 border-t border-gray-800/30">
+    R2P — Resume to Portfolio &middot; All processing happens in your browser
   </footer>
 
   <!-- ================================================================== -->
@@ -185,6 +429,11 @@
   <script>
   (function () {
     "use strict";
+
+    // Configure PDF.js worker
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
 
     // ----- DOM refs -----
     const apiKeyInput    = document.getElementById("apiKey");
@@ -200,10 +449,33 @@
     const copyBtn        = document.getElementById("copyBtn");
     const downloadBtn    = document.getElementById("downloadBtn");
 
+    // Phase 3A DOM refs
+    const heroSection         = document.getElementById("heroSection");
+    const dropZone            = document.getElementById("dropZone");
+    const fileInput           = document.getElementById("fileInput");
+    const dropZoneContent     = document.getElementById("dropZoneContent");
+    const fileSelectedState   = document.getElementById("fileSelectedState");
+    const fileNameEl          = document.getElementById("fileName");
+    const fileSizeEl          = document.getElementById("fileSize");
+    const removeFileBtn       = document.getElementById("removeFileBtn");
+    const extractFileBtn      = document.getElementById("extractFileBtn");
+    const extractFileLabel    = document.getElementById("extractFileLabel");
+    const extractFileSpinner  = document.getElementById("extractFileSpinner");
+    const uploadError         = document.getElementById("uploadError");
+    const textPasteSection    = document.getElementById("textPasteSection");
+    const advancedModeToggle  = document.getElementById("advancedModeToggle");
+    const backToUploadBtn     = document.getElementById("backToUploadBtn");
+    const extractionProgress  = document.getElementById("extractionProgress");
+    const extractionProgressText = document.getElementById("extractionProgressText");
+    const extractionProgressBar  = document.getElementById("extractionProgressBar");
+    const dashboardSection    = document.getElementById("dashboardSection");
+    const viewJsonBtn         = document.getElementById("viewJsonBtn");
+    const hideJsonBtn         = document.getElementById("hideJsonBtn");
+    const startOverBtn        = document.getElementById("startOverBtn");
+    const aiEnhanceToggle     = document.getElementById("aiEnhanceToggle");
+    const aiEnhanceStatus     = document.getElementById("aiEnhanceStatus");
+
     // Phase 2 DOM refs
-    const portfolioSection     = document.getElementById("portfolioSection");
-    const openGeneratorBtn     = document.getElementById("openGeneratorBtn");
-    const generatorPanel       = document.getElementById("generatorPanel");
     const generateWebsiteBtn   = document.getElementById("generateWebsiteBtn");
     const genLabel             = document.getElementById("genLabel");
     const genSpinner           = document.getElementById("genSpinner");
@@ -211,13 +483,20 @@
     const portfolioPreview     = document.getElementById("portfolioPreview");
     const downloadPortfolioBtn = document.getElementById("downloadPortfolioBtn");
 
-    let extractedJSON = null; // holds the last successful extraction
-    let generatedHTML = null; // holds the last generated portfolio HTML
+    // Stepper refs
+    const step1 = document.getElementById("step1");
+    const step2 = document.getElementById("step2");
+    const step3 = document.getElementById("step3");
+    const connector1 = document.getElementById("connector1");
+    const connector2 = document.getElementById("connector2");
+
+    let extractedJSON = null;
+    let generatedHTML = null;
+    let selectedFile = null;
+    let aiEnhanceEnabled = false;
 
     // ----- API key persistence (sessionStorage) -----
     const STORAGE_KEY = "r2p_openai_key";
-
-    // Restore key from session
     const savedKey = sessionStorage.getItem(STORAGE_KEY);
     if (savedKey) {
       apiKeyInput.value = savedKey;
@@ -245,22 +524,286 @@
       toggleKeyBtn.textContent = isPassword ? "Hide" : "Show";
     });
 
-    // ----- Status helpers -----
-    function showStatus(type, message) {
-      statusMsg.className = "text-sm rounded-lg px-4 py-3 " + ({
-        success: "bg-green-900/40 border border-green-700 text-green-300",
-        error:   "bg-red-900/40 border border-red-700 text-red-300",
-        info:    "bg-blue-900/40 border border-blue-700 text-blue-300",
-      }[type] || "");
-      statusMsg.textContent = message;
-      statusMsg.classList.remove("hidden");
+    // ================================================================
+    // PROGRESS STEPPER
+    // ================================================================
+    function updateStepper(activeStep) {
+      const steps = [
+        { el: step1, conn: null },
+        { el: step2, conn: connector1 },
+        { el: step3, conn: connector2 },
+      ];
+      steps.forEach((s, i) => {
+        const stepNum = i + 1;
+        s.el.className = s.el.className.replace(/step-\w+/g, '');
+        if (stepNum < activeStep) {
+          s.el.classList.add('step-complete');
+        } else if (stepNum === activeStep) {
+          s.el.classList.add('step-active');
+        } else {
+          s.el.classList.add('step-inactive');
+        }
+        if (s.conn) {
+          s.conn.className = 'step-connector mx-2 rounded-full ' + (stepNum <= activeStep ? 'step-connector-active' : 'step-connector-inactive');
+        }
+      });
     }
 
-    function hideStatus() {
-      statusMsg.classList.add("hidden");
+    // ================================================================
+    // DRAG & DROP + FILE SELECTION
+    // ================================================================
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const ALLOWED_TYPES = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    const ALLOWED_EXTENSIONS = ['.pdf', '.docx'];
+
+    dropZone.addEventListener("click", (e) => {
+      if (e.target.closest('#removeFileBtn') || e.target.closest('#extractFileBtn')) return;
+      if (!selectedFile) fileInput.click();
+    });
+
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("drop-zone-active");
+      dropZone.classList.remove("drop-zone-idle");
+    });
+
+    dropZone.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("drop-zone-active");
+      if (!selectedFile) dropZone.classList.add("drop-zone-idle");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("drop-zone-active");
+      if (!selectedFile) dropZone.classList.add("drop-zone-idle");
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+
+    function handleFile(file) {
+      hideUploadError();
+
+      // Validate file type
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        showUploadError(`Unsupported file format "${ext}". Please upload a PDF or DOCX file.`);
+        return;
+      }
+
+      // Validate file size
+      if (file.size > MAX_FILE_SIZE) {
+        showUploadError(`File is too large (${formatFileSize(file.size)}). Maximum size is 5 MB.`);
+        return;
+      }
+
+      selectedFile = file;
+      fileNameEl.textContent = file.name;
+      fileSizeEl.textContent = formatFileSize(file.size);
+      dropZoneContent.classList.add("hidden");
+      fileSelectedState.classList.remove("hidden");
+      dropZone.classList.remove("drop-zone-idle");
     }
 
-    // ----- Extract button -----
+    removeFileBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      resetFileSelection();
+    });
+
+    function resetFileSelection() {
+      selectedFile = null;
+      fileInput.value = "";
+      dropZoneContent.classList.remove("hidden");
+      fileSelectedState.classList.add("hidden");
+      dropZone.classList.add("drop-zone-idle");
+      extractFileLabel.textContent = "Extract Resume Data";
+      extractFileSpinner.classList.add("hidden");
+      extractFileBtn.disabled = false;
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function showUploadError(msg) {
+      uploadError.textContent = msg;
+      uploadError.classList.remove("hidden");
+    }
+
+    function hideUploadError() {
+      uploadError.classList.add("hidden");
+    }
+
+    // ================================================================
+    // TEXT MODE TOGGLE
+    // ================================================================
+    advancedModeToggle.addEventListener("click", () => {
+      heroSection.classList.add("hidden");
+      textPasteSection.classList.remove("hidden");
+      advancedModeToggle.classList.add("hidden");
+    });
+
+    backToUploadBtn.addEventListener("click", () => {
+      textPasteSection.classList.add("hidden");
+      heroSection.classList.remove("hidden");
+      advancedModeToggle.classList.remove("hidden");
+    });
+
+    // ================================================================
+    // PDF TEXT EXTRACTION (using PDF.js)
+    // ================================================================
+    async function extractTextFromPDF(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      const totalPages = pdf.numPages;
+
+      for (let i = 1; i <= totalPages; i++) {
+        extractionProgressText.textContent = `Extracting page ${i} of ${totalPages}...`;
+        extractionProgressBar.style.width = `${(i / totalPages) * 60}%`;
+
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n';
+      }
+
+      return fullText.trim();
+    }
+
+    // ================================================================
+    // DOCX TEXT EXTRACTION (basic)
+    // ================================================================
+    async function extractTextFromDOCX(file) {
+      extractionProgressText.textContent = "Extracting text from DOCX...";
+      extractionProgressBar.style.width = "30%";
+
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+
+      // DOCX is a ZIP file; we'll do a basic extraction of document.xml text content
+      // For a production app, you'd use a library like mammoth.js
+      // This is a simplified approach that extracts readable text
+      const text = await extractDOCXText(uint8);
+      return text;
+    }
+
+    async function extractDOCXText(uint8) {
+      // DOCX files are ZIP archives containing XML
+      // We'll use a basic approach to find and extract text from the XML
+      try {
+        // Convert to string and find XML text content between <w:t> tags
+        const blob = new Blob([uint8], { type: 'application/zip' });
+
+        // Use the browser's built-in ZIP support via Response
+        // Fallback: try to extract text patterns from the binary
+        const textDecoder = new TextDecoder('utf-8', { fatal: false });
+        const rawText = textDecoder.decode(uint8);
+
+        // Extract text between <w:t> and </w:t> tags (Word XML format)
+        const textMatches = rawText.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+        if (textMatches && textMatches.length > 0) {
+          const extracted = textMatches
+            .map(m => m.replace(/<w:t[^>]*>/, '').replace(/<\/w:t>/, ''))
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          if (extracted.length > 50) return extracted;
+        }
+
+        throw new Error("Could not extract text from DOCX. Try pasting the text directly using Text Mode.");
+      } catch (err) {
+        throw new Error("DOCX extraction failed: " + err.message);
+      }
+    }
+
+    // ================================================================
+    // FILE EXTRACTION HANDLER
+    // ================================================================
+    extractFileBtn.addEventListener("click", async () => {
+      if (!selectedFile) return;
+
+      hideUploadError();
+      hideStatus();
+      extractFileLabel.textContent = "Extracting...";
+      extractFileSpinner.classList.remove("hidden");
+      extractFileBtn.disabled = true;
+
+      // Show progress
+      extractionProgress.classList.remove("hidden");
+      extractionProgressBar.style.width = "5%";
+      updateStepper(2);
+
+      try {
+        let text = '';
+        const ext = selectedFile.name.split('.').pop().toLowerCase();
+
+        if (ext === 'pdf') {
+          text = await extractTextFromPDF(selectedFile);
+        } else if (ext === 'docx') {
+          text = await extractTextFromDOCX(selectedFile);
+        }
+
+        if (!text || text.length < 20) {
+          throw new Error("Could not extract enough text from the file. The file may be image-based or empty. Try pasting the text using Text Mode.");
+        }
+
+        extractionProgressText.textContent = "Parsing resume data...";
+        extractionProgressBar.style.width = "70%";
+
+        // Now extract structured data
+        const apiKey = apiKeyInput.value.trim();
+        let result;
+
+        if (apiKey) {
+          extractionProgressText.textContent = "Sending to AI for extraction...";
+          extractionProgressBar.style.width = "80%";
+          result = await extractWithLLM(text, apiKey);
+        } else {
+          result = extractWithHeuristics(text);
+        }
+
+        extractionProgressBar.style.width = "100%";
+        extractionProgressText.textContent = "Done!";
+
+        extractedJSON = result;
+
+        // Brief delay to show completion
+        await new Promise(r => setTimeout(r, 400));
+
+        // Hide progress, show dashboard
+        extractionProgress.classList.add("hidden");
+        heroSection.classList.add("hidden");
+        advancedModeToggle.classList.add("hidden");
+        showDashboard(result);
+        updateStepper(3);
+
+        showStatus("success", apiKey
+          ? "✓ Extracted via OpenAI GPT-3.5-turbo"
+          : "✓ Extracted via regex/heuristic parsing");
+
+      } catch (err) {
+        extractionProgress.classList.add("hidden");
+        showUploadError("Extraction failed: " + err.message);
+        updateStepper(1);
+        extractFileLabel.textContent = "Extract Resume Data";
+        extractFileSpinner.classList.add("hidden");
+        extractFileBtn.disabled = false;
+      }
+    });
+
+    // ================================================================
+    // TEXT PASTE EXTRACTION (original Phase 1 flow)
+    // ================================================================
     extractBtn.addEventListener("click", async () => {
       const text = resumeTextarea.value.trim();
       if (!text) {
@@ -282,19 +825,17 @@
         }
 
         extractedJSON = result;
-        renderJSON(result);
-        resultsSection.classList.remove("hidden");
-        // Show Phase 2 portfolio section
-        portfolioSection.classList.remove("hidden");
-        generatorPanel.classList.add("hidden");
-        previewPanel.classList.add("hidden");
+
+        // Hide text paste, show dashboard
+        textPasteSection.classList.add("hidden");
+        showDashboard(result);
+        updateStepper(3);
+
         showStatus("success", apiKey
           ? "✓ Extracted via OpenAI GPT-3.5-turbo"
           : "✓ Extracted via regex/heuristic parsing (best-effort)");
       } catch (err) {
         showStatus("error", "Extraction failed: " + err.message);
-        resultsSection.classList.add("hidden");
-        portfolioSection.classList.add("hidden");
       } finally {
         setLoading(false);
       }
@@ -304,6 +845,87 @@
       extractBtn.disabled = on;
       extractLabel.textContent = on ? "Extracting…" : "Extract JSON";
       extractSpinner.classList.toggle("hidden", !on);
+    }
+
+    // ================================================================
+    // DASHBOARD
+    // ================================================================
+    function showDashboard(data) {
+      // Update stats
+      document.getElementById("statExperience").textContent = (data.experience || []).length;
+      document.getElementById("statSkills").textContent = (data.skills || []).length;
+      document.getElementById("statProjects").textContent = (data.projects || []).length;
+      document.getElementById("statEducation").textContent = (data.education || []).length;
+
+      dashboardSection.classList.remove("hidden");
+
+      // Render JSON in background
+      renderJSON(data);
+    }
+
+    // View JSON toggle
+    viewJsonBtn.addEventListener("click", () => {
+      resultsSection.classList.toggle("hidden");
+      if (!resultsSection.classList.contains("hidden")) {
+        resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+
+    hideJsonBtn.addEventListener("click", () => {
+      resultsSection.classList.add("hidden");
+    });
+
+    // Start over
+    startOverBtn.addEventListener("click", () => {
+      extractedJSON = null;
+      generatedHTML = null;
+      selectedFile = null;
+      fileInput.value = "";
+
+      dashboardSection.classList.add("hidden");
+      resultsSection.classList.add("hidden");
+      previewPanel.classList.add("hidden");
+      heroSection.classList.remove("hidden");
+      advancedModeToggle.classList.remove("hidden");
+      textPasteSection.classList.add("hidden");
+
+      resetFileSelection();
+      hideStatus();
+      updateStepper(1);
+
+      // Reset generate button
+      genLabel.textContent = "🚀 Generate Portfolio";
+      genSpinner.classList.add("hidden");
+      generateWebsiteBtn.disabled = false;
+
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    // AI Enhance toggle
+    aiEnhanceToggle.addEventListener("click", () => {
+      const hasKey = apiKeyInput.value.trim().length > 0;
+      if (!hasKey) {
+        showStatus("info", "Please add an OpenAI API key first to enable AI enhancement.");
+        return;
+      }
+      aiEnhanceEnabled = !aiEnhanceEnabled;
+      aiEnhanceToggle.classList.toggle("active", aiEnhanceEnabled);
+      aiEnhanceStatus.textContent = aiEnhanceEnabled ? "Status: On — will enhance during generation" : "Status: Off";
+    });
+
+    // ----- Status helpers -----
+    function showStatus(type, message) {
+      statusMsg.className = "text-sm rounded-xl px-4 py-3 mt-6 " + ({
+        success: "bg-green-900/30 border border-green-700/50 text-green-300",
+        error:   "bg-red-900/30 border border-red-700/50 text-red-300",
+        info:    "bg-blue-900/30 border border-blue-700/50 text-blue-300",
+      }[type] || "");
+      statusMsg.textContent = message;
+      statusMsg.classList.remove("hidden");
+    }
+
+    function hideStatus() {
+      statusMsg.classList.add("hidden");
     }
 
     // ================================================================
@@ -453,7 +1075,6 @@ Rules:
         if (!name) { name = line; continue; }
         // Second qualifying line is likely the title
         if (!title && !/[|•·,]/.test(line.charAt(0))) {
-          // Could be title or contact line — skip if it looks like contact info
           if (/\d{3}/.test(line) || /@/.test(line)) continue;
           title = line;
           break;
@@ -499,7 +1120,6 @@ Rules:
 
     /**
      * Parse experience section lines into structured entries.
-     * Heuristic: lines with date ranges start a new entry; bullet lines are achievements.
      */
     function parseExperience(lines) {
       if (!lines.length) return [];
@@ -515,11 +1135,9 @@ Rules:
 
         const dateMatch = line.match(dateRangeRe);
 
-        // If line has a date range, it's likely a new entry header
         if (dateMatch && !bulletRe.test(line)) {
           if (current) entries.push(current);
 
-          // Try to parse "Role | Company | dates" or "Role — Company (dates)" etc.
           const cleaned = line.replace(dateRangeRe, "").replace(/[()]/g, "").trim();
           const parts = cleaned.split(/\s*[—–|@]\s*/).map(s => s.trim()).filter(Boolean);
 
@@ -532,7 +1150,6 @@ Rules:
           continue;
         }
 
-        // If no current entry yet but line looks like a company/role header
         if (!current && !bulletRe.test(line)) {
           const parts = line.split(/\s*[—–|@]\s*/).map(s => s.trim()).filter(Boolean);
           if (parts.length >= 1) {
@@ -546,11 +1163,9 @@ Rules:
           }
         }
 
-        // Bullet point → achievement
         if (current && bulletRe.test(line)) {
           current.achievements.push(line.replace(bulletRe, "").trim());
         } else if (current && line.length > 10) {
-          // Long non-bullet line might be an achievement too
           current.achievements.push(line);
         }
       }
@@ -572,7 +1187,6 @@ Rules:
       for (const line of lines) {
         if (!line) continue;
 
-        // Lines with degree keywords or institution names start new entries
         const hasDegree = /\b(B\.?S\.?|B\.?A\.?|B\.?Tech|M\.?S\.?|M\.?A\.?|M\.?Tech|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(line);
         const hasYear = yearRe.test(line);
 
@@ -584,17 +1198,14 @@ Rules:
             year: "",
           };
 
-          // Split on pipe delimiters only (not hyphens, to preserve compound names)
           const segments = line.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
 
           if (segments.length >= 3) {
-            // Pattern: Degree | Institution | Year
             current.degree = segments[0];
             current.institution = segments[1];
             const ym = segments[2].match(yearRe);
             current.year = ym ? ym[1] : segments[2];
           } else if (segments.length === 2) {
-            // Pattern: Degree | Institution  (year may be embedded)
             const ym0 = segments[0].match(yearRe);
             const ym1 = segments[1].match(yearRe);
             if (hasDegree) {
@@ -611,7 +1222,6 @@ Rules:
             }
             current.year = (ym1 ? ym1[1] : "") || (ym0 ? ym0[1] : "");
           } else {
-            // Single segment — try splitting on dash/comma as fallback
             const parts = line.replace(/[()]/g, " ").replace(/\d{4}\s*[-–—]?\s*\d{0,4}/, "").trim();
             const subSegments = parts.split(/\s*[—–,]\s*/).map(s => s.trim()).filter(Boolean);
             const yearMatch = line.match(yearRe);
@@ -626,7 +1236,6 @@ Rules:
           continue;
         }
 
-        // Continuation line
         if (current) {
           if (!current.institution && !hasDegree) current.institution = line;
           else if (!current.degree) current.degree = line;
@@ -644,7 +1253,6 @@ Rules:
     function parseSkills(lines) {
       if (!lines.length) return [];
       const text = lines.join(" ");
-      // Remove sub-headers like "Languages:", "Frameworks:", etc.
       const cleaned = text.replace(/[A-Za-z\s]+:/g, ",");
       return cleaned
         .split(/[,;|•·▪►]\s*/)
@@ -667,45 +1275,38 @@ Rules:
       for (const line of lines) {
         if (!line) continue;
 
-        // Check if this line is a metadata/continuation line for the current project
         if (current) {
           const clean = line.replace(bulletRe, "").trim();
 
-          // Tech Stack / Technologies line → extract into technologies array
           if (/^(Tech\s*Stack|Technologies|Built\s*with)\s*:/i.test(clean)) {
             const techs = clean.replace(/^[^:]+:\s*/, "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
             current.technologies.push(...techs);
             continue;
           }
 
-          // GitHub / Link / URL line → extract link
           if (/^(GitHub|Link|URL|Demo|Live|Source)\s*:/i.test(clean)) {
             const urlMatch = clean.replace(/^[^:]+:\s*/, "").trim();
             if (urlMatch && !current.link) current.link = urlMatch;
             continue;
           }
 
-          // Bare URL on its own line
           const bareUrl = clean.match(urlRe);
           if (bareUrl && clean === bareUrl[0]) {
             if (!current.link) current.link = bareUrl[0];
             continue;
           }
 
-          // Features line → add to description
           if (/^Features\s*:/i.test(clean)) {
             current.description += (current.description ? " " : "") + clean;
             continue;
           }
 
-          // Bullet point or longer description line → append to description
           if (bulletRe.test(line) || line.length >= 80) {
             current.description += (current.description ? " " : "") + clean;
             continue;
           }
         }
 
-        // Short non-bullet, non-meta line → start a new project
         if (!bulletRe.test(line) && !metaLineRe.test(line) && line.length < 80) {
           if (current) entries.push(current);
           const urlMatch = line.match(urlRe);
@@ -719,7 +1320,6 @@ Rules:
           continue;
         }
 
-        // If no current project yet, treat as description
         if (current) {
           const clean = line.replace(bulletRe, "").trim();
           current.description += (current.description ? " " : "") + clean;
@@ -735,22 +1335,15 @@ Rules:
     // ================================================================
     function renderJSON(obj) {
       const raw = JSON.stringify(obj, null, 2);
-      // Syntax highlight
       const highlighted = raw
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        // Keys
         .replace(/"([^"]+)"(?=\s*:)/g, '<span class="json-key">"$1"</span>')
-        // String values
         .replace(/:\s*"([^"]*)"/g, ': <span class="json-string">"$1"</span>')
-        // Numbers
         .replace(/:\s*(\d+)/g, ': <span class="json-number">$1</span>')
-        // Booleans
         .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
-        // Null
         .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
-        // Brackets
         .replace(/([[\]{}])/g, '<span class="json-bracket">$1</span>');
 
       jsonOutput.innerHTML = highlighted;
@@ -786,23 +1379,12 @@ Rules:
     // ================================================================
     // PHASE 2: PORTFOLIO GENERATION
     // ================================================================
-
-    // Open generator panel
-    openGeneratorBtn.addEventListener("click", () => {
-      generatorPanel.classList.remove("hidden");
-      openGeneratorBtn.textContent = "↓ Choose a template below";
-      openGeneratorBtn.disabled = true;
-      openGeneratorBtn.classList.add("opacity-50", "cursor-not-allowed");
-    });
-
-    // Generate website
     generateWebsiteBtn.addEventListener("click", () => {
       if (!extractedJSON) return;
       genLabel.textContent = "Generating…";
       genSpinner.classList.remove("hidden");
       generateWebsiteBtn.disabled = true;
 
-      // Use setTimeout to allow UI to update
       setTimeout(() => {
         try {
           generatedHTML = generateMinimalistPortfolio(extractedJSON);
@@ -810,11 +1392,10 @@ Rules:
           previewPanel.classList.remove("hidden");
           genLabel.textContent = "✓ Generated!";
           genSpinner.classList.add("hidden");
-          // Scroll to preview
           previewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (err) {
           showStatus("error", "Portfolio generation failed: " + err.message);
-          genLabel.textContent = "Generate Website";
+          genLabel.textContent = "🚀 Generate Portfolio";
           genSpinner.classList.add("hidden");
           generateWebsiteBtn.disabled = false;
         }
