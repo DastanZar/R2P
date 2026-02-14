@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>R2P — Resume to Portfolio JSON Extractor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Custom scrollbar for pre blocks */
+    pre::-webkit-scrollbar { width: 8px; height: 8px; }
+    pre::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
+    pre::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    pre::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+    /* Spinner animation */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    /* JSON syntax highlighting */
+    .json-key { color: #93c5fd; }
+    .json-string { color: #86efac; }
+    .json-number { color: #fde68a; }
+    .json-boolean { color: #f9a8d4; }
+    .json-null { color: #a5b4fc; }
+    .json-bracket { color: #cbd5e1; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <!-- ===== HEADER ===== -->
+  <header class="border-b border-gray-800 bg-gray-900/80 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+      <h1 class="text-xl font-bold tracking-tight">
+        <span class="text-indigo-400">R2P</span>
+        <span class="text-gray-400 font-normal text-sm ml-2">Resume → Portfolio</span>
+      </h1>
+      <span class="text-xs text-gray-500">Phase 1: JSON Extraction</span>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+
+    <!-- ===== API KEY INPUT (optional) ===== -->
+    <section class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+      <label for="apiKey" class="block text-sm font-medium text-gray-300 mb-1">
+        OpenAI API Key <span class="text-gray-500">(optional — enables LLM extraction)</span>
+      </label>
+      <div class="flex gap-3">
+        <input
+          id="apiKey"
+          type="password"
+          placeholder="sk-..."
+          class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        />
+        <button
+          id="toggleKey"
+          class="text-xs text-gray-400 hover:text-gray-200 px-2"
+          title="Show / hide key"
+        >Show</button>
+      </div>
+      <p id="modeIndicator" class="mt-2 text-xs text-gray-500">
+        Mode: <span class="text-amber-400 font-medium">Regex/Heuristic fallback</span> — paste an API key to use GPT extraction.
+      </p>
+    </section>
+
+    <!-- ===== RESUME INPUT ===== -->
+    <section class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+      <label for="resumeText" class="block text-sm font-medium text-gray-300 mb-2">
+        Paste your resume as plain text
+      </label>
+      <textarea
+        id="resumeText"
+        rows="14"
+        placeholder="John Doe&#10;Software Engineer&#10;john@example.com | (555) 123-4567&#10;linkedin.com/in/johndoe | github.com/johndoe&#10;San Francisco, CA&#10;&#10;SUMMARY&#10;Experienced software engineer with 5+ years...&#10;&#10;EXPERIENCE&#10;Senior Developer — Acme Corp (Jan 2021 – Present)&#10;• Led migration of monolith to microservices&#10;• Reduced API latency by 40%&#10;..."
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-y"
+      ></textarea>
+      <div class="flex justify-end mt-3">
+        <button
+          id="extractBtn"
+          class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span id="extractLabel">Extract JSON</span>
+          <div id="extractSpinner" class="spinner hidden"></div>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== STATUS MESSAGE ===== -->
+    <div id="statusMsg" class="hidden text-sm rounded-lg px-4 py-3"></div>
+
+    <!-- ===== RESULTS ===== -->
+    <section id="resultsSection" class="hidden bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+        <h2 class="text-sm font-medium text-gray-300">Extracted JSON</h2>
+        <div class="flex gap-2">
+          <button id="copyBtn" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-md transition-colors">
+            📋 Copy
+          </button>
+          <button id="downloadBtn" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-md transition-colors">
+            ⬇ Download
+          </button>
+        </div>
+      </div>
+      <pre id="jsonOutput" class="p-5 text-sm leading-relaxed overflow-x-auto bg-gray-950 max-h-[600px] overflow-y-auto"></pre>
+    </section>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="text-center text-xs text-gray-600 py-8">
+    R2P Phase 1 — JSON Extraction Layer &middot; No data leaves your browser (unless using LLM mode)
+  </footer>
+
+  <!-- ================================================================== -->
+  <!-- ===== JAVASCRIPT ===== -->
+  <!-- ================================================================== -->
+  <script>
+  (function () {
+    "use strict";
+
+    // ----- DOM refs -----
+    const apiKeyInput    = document.getElementById("apiKey");
+    const toggleKeyBtn   = document.getElementById("toggleKey");
+    const modeIndicator  = document.getElementById("modeIndicator");
+    const resumeTextarea = document.getElementById("resumeText");
+    const extractBtn     = document.getElementById("extractBtn");
+    const extractLabel   = document.getElementById("extractLabel");
+    const extractSpinner = document.getElementById("extractSpinner");
+    const statusMsg      = document.getElementById("statusMsg");
+    const resultsSection = document.getElementById("resultsSection");
+    const jsonOutput     = document.getElementById("jsonOutput");
+    const copyBtn        = document.getElementById("copyBtn");
+    const downloadBtn    = document.getElementById("downloadBtn");
+
+    let extractedJSON = null; // holds the last successful extraction
+
+    // ----- API key persistence (sessionStorage) -----
+    const STORAGE_KEY = "r2p_openai_key";
+
+    // Restore key from session
+    const savedKey = sessionStorage.getItem(STORAGE_KEY);
+    if (savedKey) {
+      apiKeyInput.value = savedKey;
+      updateModeIndicator();
+    }
+
+    apiKeyInput.addEventListener("input", () => {
+      const key = apiKeyInput.value.trim();
+      if (key) sessionStorage.setItem(STORAGE_KEY, key);
+      else sessionStorage.removeItem(STORAGE_KEY);
+      updateModeIndicator();
+    });
+
+    function updateModeIndicator() {
+      const hasKey = apiKeyInput.value.trim().length > 0;
+      modeIndicator.innerHTML = hasKey
+        ? 'Mode: <span class="text-green-400 font-medium">LLM (OpenAI GPT-3.5-turbo)</span>'
+        : 'Mode: <span class="text-amber-400 font-medium">Regex/Heuristic fallback</span> — paste an API key to use GPT extraction.';
+    }
+
+    // ----- Toggle key visibility -----
+    toggleKeyBtn.addEventListener("click", () => {
+      const isPassword = apiKeyInput.type === "password";
+      apiKeyInput.type = isPassword ? "text" : "password";
+      toggleKeyBtn.textContent = isPassword ? "Hide" : "Show";
+    });
+
+    // ----- Status helpers -----
+    function showStatus(type, message) {
+      statusMsg.className = "text-sm rounded-lg px-4 py-3 " + ({
+        success: "bg-green-900/40 border border-green-700 text-green-300",
+        error:   "bg-red-900/40 border border-red-700 text-red-300",
+        info:    "bg-blue-900/40 border border-blue-700 text-blue-300",
+      }[type] || "");
+      statusMsg.textContent = message;
+      statusMsg.classList.remove("hidden");
+    }
+
+    function hideStatus() {
+      statusMsg.classList.add("hidden");
+    }
+
+    // ----- Extract button -----
+    extractBtn.addEventListener("click", async () => {
+      const text = resumeTextarea.value.trim();
+      if (!text) {
+        showStatus("error", "Please paste your resume text first.");
+        return;
+      }
+
+      hideStatus();
+      setLoading(true);
+
+      try {
+        const apiKey = apiKeyInput.value.trim();
+        let result;
+
+        if (apiKey) {
+          result = await extractWithLLM(text, apiKey);
+        } else {
+          result = extractWithHeuristics(text);
+        }
+
+        extractedJSON = result;
+        renderJSON(result);
+        resultsSection.classList.remove("hidden");
+        showStatus("success", apiKey
+          ? "✓ Extracted via OpenAI GPT-3.5-turbo"
+          : "✓ Extracted via regex/heuristic parsing (best-effort)");
+      } catch (err) {
+        showStatus("error", "Extraction failed: " + err.message);
+        resultsSection.classList.add("hidden");
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    function setLoading(on) {
+      extractBtn.disabled = on;
+      extractLabel.textContent = on ? "Extracting…" : "Extract JSON";
+      extractSpinner.classList.toggle("hidden", !on);
+    }
+
+    // ================================================================
+    // LLM EXTRACTION (OpenAI API)
+    // ================================================================
+    async function extractWithLLM(resumeText, apiKey) {
+      const systemPrompt = `You are a resume parser. Extract structured data from the provided resume text and return ONLY valid JSON matching this exact schema (no markdown, no explanation):
+
+{
+  "personal": {
+    "name": "",
+    "title": "",
+    "email": "",
+    "phone": "",
+    "linkedin": "",
+    "github": "",
+    "location": ""
+  },
+  "summary": "",
+  "experience": [
+    {
+      "company": "",
+      "role": "",
+      "duration": "",
+      "achievements": []
+    }
+  ],
+  "education": [
+    {
+      "institution": "",
+      "degree": "",
+      "year": ""
+    }
+  ],
+  "skills": [],
+  "projects": [
+    {
+      "name": "",
+      "description": "",
+      "technologies": [],
+      "link": ""
+    }
+  ]
+}
+
+Rules:
+- Fill in every field you can find. Use empty string "" for missing text fields, empty array [] for missing arrays.
+- "achievements" should be an array of strings (bullet points).
+- "skills" should be a flat array of skill strings.
+- "duration" should be the date range as written (e.g. "Jan 2021 – Present").
+- Return ONLY the JSON object, nothing else.`;
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-3.5-turbo",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: resumeText },
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content?.trim();
+
+      if (!content) throw new Error("Empty response from API");
+
+      // Strip markdown code fences if present
+      const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        throw new Error("API returned invalid JSON. Raw response: " + content.slice(0, 200));
+      }
+    }
+
+    // ================================================================
+    // HEURISTIC / REGEX EXTRACTION (fallback)
+    // ================================================================
+    function extractWithHeuristics(text) {
+      const lines = text.split(/\n/);
+      const trimmedLines = lines.map(l => l.trim()).filter(Boolean);
+
+      // -- Helper: find lines matching a regex --
+      const findFirst = (regex) => {
+        for (const line of trimmedLines) {
+          const m = line.match(regex);
+          if (m) return m;
+        }
+        return null;
+      };
+
+      // -- Helper: find all text in a section --
+      const sectionHeaders = /^(summary|objective|profile|about|experience|work\s*experience|employment|education|academic|skills|technical\s*skills|core\s*competencies|projects|certifications?|awards?|publications?|volunteer)/i;
+
+      /**
+       * getSectionContent returns lines between a section header and the next section header.
+       */
+      function getSectionContent(sectionRegex) {
+        const content = [];
+        let capturing = false;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            if (capturing) content.push("");
+            continue;
+          }
+          if (sectionRegex.test(trimmed)) {
+            capturing = true;
+            continue;
+          }
+          if (capturing && sectionHeaders.test(trimmed)) {
+            break;
+          }
+          if (capturing) content.push(trimmed);
+        }
+        return content;
+      }
+
+      // ---- PERSONAL INFO ----
+      const emailMatch  = findFirst(/[\w.+-]+@[\w-]+\.[\w.]+/);
+      const phoneMatch  = findFirst(/(\+?\d[\d\s\-().]{7,}\d)/);
+      const linkedinMatch = findFirst(/((?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+\/?)/i);
+      const githubMatch = findFirst(/((?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+\/?)/i);
+
+      // Name: usually the first non-empty line that isn't an email/phone/url
+      let name = "";
+      let title = "";
+      for (const line of trimmedLines) {
+        if (/[@]/.test(line)) continue;
+        if (/linkedin|github|http/i.test(line)) continue;
+        if (/^\+?\d[\d\s\-().]{7,}/.test(line)) continue;
+        if (sectionHeaders.test(line)) break;
+        if (!name) { name = line; continue; }
+        // Second qualifying line is likely the title
+        if (!title && !/[|•·,]/.test(line.charAt(0))) {
+          // Could be title or contact line — skip if it looks like contact info
+          if (/\d{3}/.test(line) || /@/.test(line)) continue;
+          title = line;
+          break;
+        }
+      }
+
+      // Location: look for common patterns like "City, ST" or "City, State"
+      const locationMatch = findFirst(/([A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s+\d{5})?)/);
+      const location = locationMatch ? locationMatch[1] : "";
+
+      const personal = {
+        name: name,
+        title: title,
+        email: emailMatch ? emailMatch[0] : "",
+        phone: phoneMatch ? phoneMatch[1].trim() : "",
+        linkedin: linkedinMatch ? linkedinMatch[1] : "",
+        github: githubMatch ? githubMatch[1] : "",
+        location: location,
+      };
+
+      // ---- SUMMARY ----
+      const summaryLines = getSectionContent(/^(summary|objective|profile|about)\s*:?\s*$/i);
+      const summary = summaryLines.filter(Boolean).join(" ");
+
+      // ---- EXPERIENCE ----
+      const expLines = getSectionContent(/^(experience|work\s*experience|employment|professional\s*experience)\s*:?\s*$/i);
+      const experience = parseExperience(expLines);
+
+      // ---- EDUCATION ----
+      const eduLines = getSectionContent(/^(education|academic)\s*:?\s*$/i);
+      const education = parseEducation(eduLines);
+
+      // ---- SKILLS ----
+      const skillLines = getSectionContent(/^(skills|technical\s*skills|core\s*competencies|technologies)\s*:?\s*$/i);
+      const skills = parseSkills(skillLines);
+
+      // ---- PROJECTS ----
+      const projLines = getSectionContent(/^(projects|personal\s*projects|side\s*projects)\s*:?\s*$/i);
+      const projects = parseProjects(projLines);
+
+      return { personal, summary, experience, education, skills, projects };
+    }
+
+    /**
+     * Parse experience section lines into structured entries.
+     * Heuristic: lines with date ranges start a new entry; bullet lines are achievements.
+     */
+    function parseExperience(lines) {
+      if (!lines.length) return [];
+
+      const dateRangeRe = /(\w{3,9}\.?\s+\d{4}\s*[-–—]\s*(?:\w{3,9}\.?\s+\d{4}|present|current|now)|\d{4}\s*[-–—]\s*(?:\d{4}|present|current|now))/i;
+      const bulletRe = /^[•\-–—*▪▸►]\s*/;
+
+      const entries = [];
+      let current = null;
+
+      for (const line of lines) {
+        if (!line) continue;
+
+        const dateMatch = line.match(dateRangeRe);
+
+        // If line has a date range, it's likely a new entry header
+        if (dateMatch && !bulletRe.test(line)) {
+          if (current) entries.push(current);
+
+          // Try to parse "Role — Company (dates)" or "Company | Role | dates" etc.
+          const cleaned = line.replace(dateRangeRe, "").replace(/[()]/g, "").trim();
+          const parts = cleaned.split(/\s*[—–\-|@]\s*/).map(s => s.trim()).filter(Boolean);
+
+          current = {
+            company: parts[1] || parts[0] || "",
+            role: parts.length > 1 ? parts[0] : "",
+            duration: dateMatch[1].trim(),
+            achievements: [],
+          };
+          continue;
+        }
+
+        // If no current entry yet but line looks like a company/role header
+        if (!current && !bulletRe.test(line)) {
+          const parts = line.split(/\s*[—–\-|@]\s*/).map(s => s.trim()).filter(Boolean);
+          if (parts.length >= 1) {
+            current = {
+              company: parts[1] || parts[0] || "",
+              role: parts.length > 1 ? parts[0] : "",
+              duration: "",
+              achievements: [],
+            };
+            continue;
+          }
+        }
+
+        // Bullet point → achievement
+        if (current && bulletRe.test(line)) {
+          current.achievements.push(line.replace(bulletRe, "").trim());
+        } else if (current && line.length > 10) {
+          // Long non-bullet line might be an achievement too
+          current.achievements.push(line);
+        }
+      }
+
+      if (current) entries.push(current);
+      return entries;
+    }
+
+    /**
+     * Parse education section.
+     */
+    function parseEducation(lines) {
+      if (!lines.length) return [];
+
+      const entries = [];
+      let current = null;
+      const yearRe = /(\d{4})/;
+
+      for (const line of lines) {
+        if (!line) continue;
+
+        // Lines with degree keywords or institution names start new entries
+        const hasDegree = /\b(B\.?S\.?|B\.?A\.?|M\.?S\.?|M\.?A\.?|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(line);
+        const hasYear = yearRe.test(line);
+
+        if (hasDegree || (!current && line.length > 3)) {
+          if (current) entries.push(current);
+          const yearMatch = line.match(yearRe);
+          current = {
+            institution: "",
+            degree: "",
+            year: yearMatch ? yearMatch[1] : "",
+          };
+
+          // Try to split "Degree — Institution" or "Institution — Degree"
+          const parts = line.replace(/[()]/g, " ").replace(/\d{4}\s*[-–—]?\s*\d{0,4}/, "").trim();
+          const segments = parts.split(/\s*[—–\-|,]\s*/).map(s => s.trim()).filter(Boolean);
+
+          if (hasDegree) {
+            // Find which segment has the degree
+            for (let i = 0; i < segments.length; i++) {
+              if (/\b(B\.?S\.?|B\.?A\.?|M\.?S\.?|M\.?A\.?|Ph\.?D|MBA|Bachelor|Master|Doctor|Associate|Diploma|Certificate)\b/i.test(segments[i])) {
+                current.degree = segments[i];
+                current.institution = segments.filter((_, j) => j !== i).join(", ");
+                break;
+              }
+            }
+            if (!current.degree) current.degree = segments[0] || "";
+          } else {
+            current.institution = segments[0] || line;
+          }
+          continue;
+        }
+
+        // Continuation line
+        if (current) {
+          if (!current.institution && !hasDegree) current.institution = line;
+          else if (!current.degree) current.degree = line;
+          if (hasYear && !current.year) current.year = line.match(yearRe)[1];
+        }
+      }
+
+      if (current) entries.push(current);
+      return entries;
+    }
+
+    /**
+     * Parse skills: split by commas, pipes, bullets, semicolons.
+     */
+    function parseSkills(lines) {
+      if (!lines.length) return [];
+      const text = lines.join(" ");
+      // Remove sub-headers like "Languages:", "Frameworks:", etc.
+      const cleaned = text.replace(/[A-Za-z\s]+:/g, ",");
+      return cleaned
+        .split(/[,;|•·▪►]\s*/)
+        .map(s => s.replace(/^[\-–—*\s]+/, "").trim())
+        .filter(s => s.length > 0 && s.length < 60);
+    }
+
+    /**
+     * Parse projects section.
+     */
+    function parseProjects(lines) {
+      if (!lines.length) return [];
+
+      const bulletRe = /^[•\-–—*▪▸►]\s*/;
+      const urlRe = /(https?:\/\/[^\s)]+)/;
+      const entries = [];
+      let current = null;
+
+      for (const line of lines) {
+        if (!line) continue;
+
+        // Non-bullet line that's short-ish → new project name
+        if (!bulletRe.test(line) && line.length < 100) {
+          if (current) entries.push(current);
+          const urlMatch = line.match(urlRe);
+          const name = line.replace(urlRe, "").replace(/[—–\-|]/g, " ").trim();
+          current = {
+            name: name,
+            description: "",
+            technologies: [],
+            link: urlMatch ? urlMatch[1] : "",
+          };
+          continue;
+        }
+
+        if (current) {
+          const clean = line.replace(bulletRe, "").trim();
+          const urlMatch = clean.match(urlRe);
+          if (urlMatch && !current.link) current.link = urlMatch[1];
+
+          // Check for tech stack indicators
+          if (/\b(built with|tech|stack|using|technologies)\b/i.test(clean)) {
+            const techs = clean.replace(/.*?:\s*/, "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
+            current.technologies.push(...techs);
+          } else {
+            current.description += (current.description ? " " : "") + clean;
+          }
+        }
+      }
+
+      if (current) entries.push(current);
+      return entries;
+    }
+
+    // ================================================================
+    // JSON RENDERING with syntax highlighting
+    // ================================================================
+    function renderJSON(obj) {
+      const raw = JSON.stringify(obj, null, 2);
+      // Syntax highlight
+      const highlighted = raw
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        // Keys
+        .replace(/"([^"]+)"(?=\s*:)/g, '<span class="json-key">"$1"</span>')
+        // String values
+        .replace(/:\s*"([^"]*)"/g, ': <span class="json-string">"$1"</span>')
+        // Numbers
+        .replace(/:\s*(\d+)/g, ': <span class="json-number">$1</span>')
+        // Booleans
+        .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
+        // Null
+        .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
+        // Brackets
+        .replace(/([[\]{}])/g, '<span class="json-bracket">$1</span>');
+
+      jsonOutput.innerHTML = highlighted;
+    }
+
+    // ================================================================
+    // COPY & DOWNLOAD
+    // ================================================================
+    copyBtn.addEventListener("click", () => {
+      if (!extractedJSON) return;
+      const text = JSON.stringify(extractedJSON, null, 2);
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = "✓ Copied!";
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+      });
+    });
+
+    downloadBtn.addEventListener("click", () => {
+      if (!extractedJSON) return;
+      const text = JSON.stringify(extractedJSON, null, 2);
+      const blob = new Blob([text], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "resume.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+  })();
+  </script>
+</body>
+</html>
