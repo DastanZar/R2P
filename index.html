@@ -584,6 +584,7 @@ Rules:
       const metaLineRe = /^(Tech\s*Stack|Technologies|GitHub|Link|Features|Built\s*with|URL|Demo|Live|Source)\s*:/i;
       const entries = [];
       let current = null;
+      let needsDescription = false; // true right after starting a new project
 
       for (const line of lines) {
         if (!line) continue;
@@ -596,6 +597,7 @@ Rules:
           if (/^(Tech\s*Stack|Technologies|Built\s*with)\s*:/i.test(clean)) {
             const techs = clean.replace(/^[^:]+:\s*/, "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
             current.technologies.push(...techs);
+            needsDescription = false;
             continue;
           }
 
@@ -603,6 +605,7 @@ Rules:
           if (/^(GitHub|Link|URL|Demo|Live|Source)\s*:/i.test(clean)) {
             const urlMatch = clean.replace(/^[^:]+:\s*/, "").trim();
             if (urlMatch && !current.link) current.link = urlMatch;
+            needsDescription = false;
             continue;
           }
 
@@ -610,12 +613,22 @@ Rules:
           const bareUrl = clean.match(urlRe);
           if (bareUrl && clean === bareUrl[0]) {
             if (!current.link) current.link = bareUrl[0];
+            needsDescription = false;
             continue;
           }
 
           // Features line → add to description
           if (/^Features\s*:/i.test(clean)) {
             current.description += (current.description ? " " : "") + clean;
+            needsDescription = false;
+            continue;
+          }
+
+          // If the current project still needs a description, treat the next
+          // non-metadata line as the description instead of a new project name
+          if (needsDescription && !current.description) {
+            current.description = clean;
+            needsDescription = false;
             continue;
           }
 
@@ -637,6 +650,7 @@ Rules:
             technologies: [],
             link: urlMatch ? urlMatch[1] : "",
           };
+          needsDescription = true;
           continue;
         }
 
