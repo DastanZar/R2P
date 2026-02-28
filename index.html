@@ -745,7 +745,8 @@
       updateProcessingBar(60);
       updateProcessingText("Analyzing resume...", "Parsing extracted text");
 
-      const apiKey = apiKeyInput.value.trim();
+      try {
+        const apiKey = apiKeyInput.value.trim();
         let result;
 
         if (apiKey) {
