@@ -723,29 +723,28 @@
           const data = await response.json();
           text = data.text;
         } else {
-          // Backend not available, fall back to client-side extraction
+          // Backend not available, use client-side extraction
           console.log("Backend not available, using client-side PDF extraction");
-          updateProcessingText("Processing your resume...", "Extracting text locally (client-side)");
+          updateProcessingText("Processing your resume...", "Extracting text locally");
           text = await extractTextFromPDF(selectedFile);
         }
       } catch (e) {
-        // Backend not available, fall back to client-side extraction
-        console.log("Backend not available, using client-side PDF extraction:", e.message);
-        updateProcessingText("Processing your resume...", "Extracting text locally (client-side)");
-        try {
-          text = await extractTextFromPDF(selectedFile);
-        } catch (pdfErr) {
-          throw new Error("Could not extract text from PDF. Please try pasting text instead.");
-        }
+        // Backend not available, use client-side extraction
+        console.log("Using client-side PDF extraction:", e.message);
+        updateProcessingText("Processing your resume...", "Extracting text locally");
+        text = await extractTextFromPDF(selectedFile);
       }
 
       if (!text || !text.trim()) {
-        throw new Error("Could not extract text from this PDF. It may be image-based or empty. Try pasting text instead.");
+        hideProcessing();
+        showStatus("error", "Could not extract text from PDF. Try pasting text instead.");
+        return;
       }
 
       updateProcessingBar(60);
       updateProcessingText("Analyzing resume...", "Parsing extracted text");
-        const apiKey = apiKeyInput.value.trim();
+
+      const apiKey = apiKeyInput.value.trim();
         let result;
 
         if (apiKey) {
