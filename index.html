@@ -1144,34 +1144,55 @@ Rules:
       const linkedinMatch = findFirst(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/(?:in|profile)\/[a-zA-Z0-9_-]+\/?/i);
       const githubMatch = findFirst(/(?:https?:\/\/)?(?:www\.)?github\.com\/[a-zA-Z0-9_-]+\/?/i);
 
-      // Enhanced name detection
+      // SIMPLIFIED name detection - more lenient patterns
       let name = "";
       let title = "";
       
-      for (let i = 0; i < Math.min(10, trimmedLines.length); i++) {
+      for (let i = 0; i < Math.min(15, trimmedLines.length); i++) {
         const line = trimmedLines[i];
-        if (/[@]|linkedin|github|http|^\d{3}/.test(line)) continue;
+        
+        // Skip obvious non-name lines
+        if (line.includes('@')) continue; // Email
+        if (line.includes('http')) continue; // URLs
+        if (line.includes('linkedin.com') || line.includes('github.com')) continue;
+        if (/^\d{3}-\d{3}-\d{4}$/.test(line)) continue; // Phone
         if (sectionHeaders.test(line)) break;
         
-        // All caps name (JOHN DOE)
-        if (/^[A-Z][A-Z\s]+$/.test(line) && line.length > 3 && line.length < 50) {
-          name = line;
-          continue;
-        }
-        // Proper case name (John Doe)
-        if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$/.test(line) && line.length > 3 && line.length < 50) {
-          name = line;
-          continue;
+        // Check if line looks like a name (2-4 words, each capitalized)
+        const words = line.split(/\s+/).filter(w => w.length > 0);
+        const allWordsCapitalized = words.every(w => /^[A-Z][a-zA-Z]*$/.test(w));
+        
+        // Name pattern: 2-4 capitalized words, 5-40 chars total
+        if (words.length >= 2 && words.length <= 4 && allWordsCapitalized && line.length >= 5 && line.length <= 40) {
+          // Additional check: not all caps (like a header)
+          if (!/^[A-Z\s]+$/.test(line)) {
+            name = line;
+            break; // Stop after finding first potential name
+          }
         }
       }
 
-      // Look for title after name
+      // If still no name, try first non-contact line
+      if (!name) {
+        for (const line of trimmedLines) {
+          if (line.includes('@') || line.includes('http') || /^\d/.test(line)) continue;
+          if (sectionHeaders.test(line)) break;
+          if (line.length > 3 && line.length < 40 && !/^\s*[-•]/.test(line)) {
+            name = line;
+            break;
+          }
+        }
+      }
+
+      // Look for title after name (next 3 lines)
       if (name) {
         const nameIdx = trimmedLines.indexOf(name);
         for (let i = nameIdx + 1; i < Math.min(nameIdx + 4, trimmedLines.length); i++) {
           const line = trimmedLines[i];
-          if (/[@]|linkedin|github|http|^\d{3}/.test(line)) continue;
-          if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/.test(line) && line.length < 60) {
+          // Skip contact info
+          if (line.includes('@') || line.includes('http') || /^\d/.test(line)) continue;
+          // Title should be a reasonable phrase
+          if (line.length > 3 && line.length < 60 && !sectionHeaders.test(line)) {
             title = line;
             break;
           }
@@ -1214,123 +1235,110 @@ Rules:
       return { personal, summary, experience, education, skills, projects };
     }
 
-    // ENHANCED Experience Parser
+    // SIMPLIFIED Experience Parser
     function parseExperience(lines) {
       if (!lines.length) return [];
 
-      // More flexible date patterns
-      const dateRangeRe = /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—]\s*(?:present|current|now)|\d{4}\s*[-–—]\s*\d{4}|\d{4}\s*[-–—]\s*(?:present|current|now)|\b(19|20)\d{2}\b)/i;
+      const dateRangeRe = /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{1,2}\/\d{4}|\d{4})\s*[-–—]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{1,2}\/\d{4}|\d{4}|present|current|now)\b/i;
       const bulletRe = /^[•\-–—*▪▸►‣◦∙·]\s*/;
       const entries = [];
       let current = null;
-      let buffer = [];
+      let achievements = [];
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line) continue;
+      for (const line of lines) {
+        if (!line || !line.trim()) continue;
 
-        const dateMatch = line.match(dateRangeRe);
-        const isBullet = bulletRe.test(line);
+        const trimmed = line.trim();
+        const isBullet = bulletRe.test(trimmed);
+        const dateMatch = trimmed.match(dateRangeRe);
 
-        // New entry detection
-        let isNewEntry = false;
-        
+        // New entry: has date and not a bullet
         if (dateMatch && !isBullet) {
-          isNewEntry = true;
-        } else if (!isBullet && line.length > 3 && line.length < 80 &&
-                   (line.includes(" at ") || line.includes("Engineer") || line.includes("Manager") ||
-                    line.includes("Developer") || line.includes("Designer"))) {
-          isNewEntry = true;
-        }
-
-        if (isNewEntry) {
+          // Save previous entry
           if (current) {
-            if (buffer.length > 0) {
-              current.achievements.push(...buffer);
-              buffer = [];
-            }
+            current.achievements = achievements;
             entries.push(current);
+            achievements = [];
           }
 
-          current = {
-            company: "",
-            role: "",
-            duration: "",
-            achievements: [],
-          };
+          current = { company: "", role: "", duration: "", achievements: [] };
+          current.duration = dateMatch[0];
 
-          if (dateMatch) {
-            current.duration = dateMatch[0];
-            const cleaned = line.replace(dateRangeRe, "").trim();
-            const parts = cleaned.split(/(?:\s*(?:at|@|[-–—|])\s*)/i).filter(s => s.trim());
-            
-            if (parts.length >= 2) {
-              current.role = parts[0].trim();
-              current.company = parts[1].trim();
-            } else if (cleaned) {
-              current.role = cleaned;
-            }
+          // Parse role and company from remaining text
+          let remaining = trimmed.replace(dateRangeRe, "").trim();
+          remaining = remaining.replace(/^[|-–—@\s]+/, "").trim();
+          
+          // Common patterns: "Role at Company" or "Role | Company" or "Role - Company"
+          const separators = /\s*(?:at|\||@|[-–—])\s*/i;
+          const parts = remaining.split(separators).filter(s => s.trim());
+          
+          if (parts.length >= 2) {
+            current.role = parts[0].trim();
+            current.company = parts[1].trim();
           } else {
-            const parts = line.split(/(?:\s*(?:at|@|[-–—|])\s*)/i).filter(s => s.trim());
-            if (parts.length >= 2) {
-              current.role = parts[0].trim();
-              current.company = parts[1].trim();
-            } else {
-              current.role = line.trim();
-            }
+            current.role = remaining;
           }
-        } else if (current && isBullet) {
-          const cleaned = line.replace(bulletRe, "").trim();
-          if (cleaned) buffer.push(cleaned);
+        }
+        // Bullet point = achievement
+        else if (current && isBullet) {
+          achievements.push(trimmed.replace(bulletRe, "").trim());
+        }
+        // Non-bullet text after entry started = might be additional info or achievement
+        else if (current && trimmed.length > 10) {
+          achievements.push(trimmed);
         }
       }
 
+      // Don't forget last entry
       if (current) {
-        if (buffer.length > 0) current.achievements.push(...buffer);
+        current.achievements = achievements;
         entries.push(current);
       }
 
       return entries;
     }
 
-    // ENHANCED Education Parser
+    // SIMPLIFIED Education Parser
     function parseEducation(lines) {
       if (!lines.length) return [];
 
       const entries = [];
       let current = null;
-      const degreeRe = /\b(B\.?S\.?|B\.?A\.?|B\.?Tech|M\.?S\.?|M\.?A\.?|M\.?Tech|MBA|Ph\.?D|Bachelor|Master|Doctorate|Associate|Diploma|Certificate|High School)\b/i;
-      const yearRe = /\b(19|20)\d{2}\b/;
+      const degreeKeywords = /\b(B\.?S\.?|B\.?A\.?|M\.?S\.?|M\.?A\.?|MBA|Ph\.?D|Bachelor|Master|Doctorate|Associate|Diploma|Certificate)\b/i;
+      const yearRe = /\b(19|20)\d{2}\b/g;
 
       for (const line of lines) {
-        if (!line) continue;
+        if (!line || !line.trim()) continue;
 
-        const hasDegree = degreeRe.test(line);
-        const hasYear = yearRe.test(line);
+        const trimmed = line.trim();
+        const hasDegree = degreeKeywords.test(trimmed);
+        const years = trimmed.match(yearRe);
 
-        if (hasDegree || hasYear || (/^[A-Z]/.test(line) && line.length > 3)) {
+        // New entry if has degree or year
+        if (hasDegree || years || (/^[A-Z]/.test(trimmed) && trimmed.length > 5)) {
           if (current) entries.push(current);
           current = { institution: "", degree: "", year: "" };
 
-          const yearMatch = line.match(yearRe);
-          if (yearMatch) current.year = yearMatch[0];
+          // Extract year(s)
+          if (years) {
+            current.year = years[years.length - 1]; // Use last year (graduation)
+          }
 
-          let cleaned = line.replace(yearRe, "").trim();
-          
+          // Simple split: degree often comes first
           if (hasDegree) {
-            const degreeMatch = cleaned.match(degreeRe);
+            const degreeMatch = trimmed.match(degreeKeywords);
             if (degreeMatch) {
               current.degree = degreeMatch[0];
-              const parts = cleaned.split(degreeRe).filter(s => s.trim());
-              if (parts.length > 0) {
-                current.institution = parts[parts.length - 1].replace(/^[,-]\s*/, "").trim();
+              // Institution is usually after degree
+              const parts = trimmed.split(/[,|-]/).map(s => s.trim());
+              if (parts.length > 1) {
+                current.institution = parts[parts.length - 1].replace(/\d{4}/g, "").trim();
               }
             }
           } else {
-            current.institution = cleaned;
+            // No degree found - assume it's the institution
+            current.institution = trimmed.replace(/\d{4}/g, "").trim();
           }
-        } else if (current && !current.institution) {
-          current.institution = line.trim();
         }
       }
 
@@ -1338,77 +1346,74 @@ Rules:
       return entries;
     }
 
-    // ENHANCED Skills Parser
+    // SIMPLIFIED Skills Parser
     function parseSkills(lines) {
       if (!lines.length) return [];
       
       const allText = lines.join(" ");
-      const skills = new Set();
-      const parts = allText.split(/[,;|•·▶\/]/);
+      const skills = [];
+      
+      // Split by common delimiters
+      const parts = allText.split(/[,;|]/);
       
       for (const part of parts) {
-        const skill = part.replace(/^[\-–—*\s•]+/, "").trim();
-        if (skill && skill.length > 0 && skill.length < 30 &&
-            !/^\d+$/.test(skill) &&
-            !/^(skills|technologies|expertise)$/i.test(skill)) {
-          skills.add(skill);
+        const skill = part.trim();
+        // Keep skills that are reasonable length and not headers
+        if (skill && skill.length > 1 && skill.length < 25 &&
+            !/^(skills|technologies|expertise|proficient)$/i.test(skill)) {
+          skills.push(skill);
         }
       }
 
-      return Array.from(skills);
+      return skills;
     }
 
-    // ENHANCED Projects Parser
+    // SIMPLIFIED Projects Parser
     function parseProjects(lines) {
       if (!lines.length) return [];
 
-      const bulletRe = /^[•\-–—*▪▸►‣◦∙·]\s*/;
-      const urlRe = /(?:https?:\/\/)?(?:www\.)?(?:github\.com|gitlab\.com)\/[^\s)]+/i;
+      const bulletRe = /^[•\-–—*]\s*/;
+      const urlRe = /github\.com\/[^\s]+/i;
       const entries = [];
       let current = null;
-      let descriptionBuffer = [];
+      let description = [];
 
       for (const line of lines) {
-        if (!line) continue;
+        if (!line || !line.trim()) continue;
 
-        const isBullet = bulletRe.test(line);
-        const urlMatch = line.match(urlRe);
+        const trimmed = line.trim();
+        const isBullet = bulletRe.test(trimmed);
+        const urlMatch = trimmed.match(urlRe);
 
-        let isNewProject = false;
-        
-        if (!isBullet && !current) isNewProject = true;
-        else if (urlMatch && !isBullet && line.length < 80) isNewProject = true;
-        else if (!isBullet && line.length > 2 && line.length < 60 && /^[A-Z]/.test(line)) isNewProject = true;
-
-        if (isNewProject) {
+        // New project: starts with capital letter, not a bullet, reasonable length
+        if (!isBullet && /^[A-Z]/.test(trimmed) && trimmed.length < 60 && !urlMatch) {
+          // Save previous
           if (current) {
-            if (descriptionBuffer.length > 0) current.description = descriptionBuffer.join(" ").trim();
+            current.description = description.join(" ");
             entries.push(current);
-            descriptionBuffer = [];
+            description = [];
           }
 
-          current = { name: "", description: "", technologies: [], link: "" };
-
-          if (urlMatch) current.link = urlMatch[0].startsWith("http") ? urlMatch[0] : "https://" + urlMatch[0];
-
-          let name = line.replace(urlRe, "").replace(/^[\-–—|:]\s*/, "").trim();
-          name = name.replace(/^(Project|Name)[:\s-]*/i, "").trim();
-          current.name = name || "Untitled Project";
-        } else if (current && isBullet) {
-          const cleaned = line.replace(bulletRe, "").trim();
-          if (/^(Tech|Technologies|Stack|Built with)[:\s]/i.test(cleaned)) {
-            const techPart = cleaned.replace(/^(Tech|Technologies|Stack|Built with)[:\s]*/i, "");
-            current.technologies = techPart.split(/[,;|]/).map(t => t.trim()).filter(t => t);
-          } else {
-            descriptionBuffer.push(cleaned);
+          current = { name: trimmed, description: "", technologies: [], link: "" };
+        }
+        // Line with URL
+        else if (urlMatch && current) {
+          current.link = "https://" + urlMatch[0];
+          // If there's text before URL, it's part of description
+          const textBefore = trimmed.substring(0, trimmed.indexOf(urlMatch[0])).trim();
+          if (textBefore && textBefore.length > 3) {
+            description.push(textBefore);
           }
-        } else if (current && line.length > 10) {
-          descriptionBuffer.push(line.trim());
+        }
+        // Bullet point or description
+        else if (current) {
+          const cleaned = trimmed.replace(bulletRe, "").trim();
+          if (cleaned) description.push(cleaned);
         }
       }
 
       if (current) {
-        if (descriptionBuffer.length > 0) current.description = descriptionBuffer.join(" ").trim();
+        current.description = description.join(" ");
         entries.push(current);
       }
 
