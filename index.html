@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>R2P — Resume to Portfolio JSON Extractor</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    // Configure pdf.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
   <style>
     /* Custom scrollbar for pre blocks */
     pre::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -40,7 +45,7 @@
         <span class="text-indigo-400">R2P</span>
         <span class="text-gray-400 font-normal text-sm ml-2">Resume → Portfolio</span>
       </h1>
-      <span class="text-xs text-gray-500">Phase 1 &amp; 2: JSON → Portfolio</span>
+      <span class="text-xs text-gray-500">Phase 1 &amp; 2: JSON → Portfolio • PDF Upload Ready</span>
     </div>
   </header>
 
@@ -74,6 +79,24 @@
       <label for="resumeText" class="block text-sm font-medium text-gray-300 mb-2">
         Paste your resume as plain text
       </label>
+      <!-- File Upload Option -->
+      <div class="mb-4">
+        <label class="flex items-center justify-center w-full h-16 px-4 transition bg-gray-800 border-2 border-gray-700 border-dashed rounded-lg appearance-none cursor-pointer hover:border-indigo-500 focus:outline-none">
+          <span class="flex items-center space-x-2">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+            <span class="text-sm text-gray-400">Click to upload PDF resume</span>
+          </span>
+          <input type="file" id="pdfUpload" class="hidden" accept=".pdf" />
+        </label>
+        <div id="pdfStatus" class="mt-2 text-sm text-gray-500 hidden"></div>
+        <div id="pdfLoading" class="hidden mt-2 flex items-center gap-2">
+          <div class="spinner"></div>
+          <span class="text-sm text-gray-400">Processing PDF...</span>
+        </div>
+      </div>
+      <div class="flex items-center justify-center mb-3">
+        <span class="text-xs text-gray-600">— or paste text below —</span>
+      </div>
       <textarea
         id="resumeText"
         rows="14"
@@ -200,6 +223,11 @@
     const copyBtn        = document.getElementById("copyBtn");
     const downloadBtn    = document.getElementById("downloadBtn");
 
+    // PDF Upload DOM refs
+    const pdfUpload      = document.getElementById("pdfUpload");
+    const pdfStatus      = document.getElementById("pdfStatus");
+    const pdfLoading     = document.getElementById("pdfLoading");
+
     // Phase 2 DOM refs
     const portfolioSection     = document.getElementById("portfolioSection");
     const openGeneratorBtn     = document.getElementById("openGeneratorBtn");
@@ -236,6 +264,58 @@
       modeIndicator.innerHTML = hasKey
         ? 'Mode: <span class="text-green-400 font-medium">LLM (OpenAI GPT-3.5-turbo)</span>'
         : 'Mode: <span class="text-amber-400 font-medium">Regex/Heuristic fallback</span> — paste an API key to use GPT extraction.';
+    }
+
+    // ----- PDF Upload Handler -----
+    pdfUpload.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Validate file type
+      if (file.type !== "application/pdf") {
+        showStatus("error", "Please select a valid PDF file.");
+        return;
+      }
+
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        showStatus("error", "File size must be under 10MB.");
+        return;
+      }
+
+      hideStatus();
+      pdfLoading.classList.remove("hidden");
+      pdfStatus.classList.add("hidden");
+
+      try {
+        const text = await extractTextFromPDF(file);
+        resumeTextarea.value = text;
+        pdfStatus.textContent = `✓ Loaded: ${file.name} (${Math.round(file.size / 1024)}KB)`;
+        pdfStatus.classList.remove("hidden");
+        showStatus("success", "PDF text extracted! Click 'Extract JSON' to continue.");
+      } catch (err) {
+        showStatus("error", "Failed to extract text from PDF: " + err.message);
+      } finally {
+        pdfLoading.classList.add("hidden");
+      }
+    });
+
+    // ----- Extract text from PDF -----
+    async function extractTextFromPDF(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = "";
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item) => item.str)
+          .join(" ");
+        fullText += pageText + "\n\n";
+      }
+
+      return fullText.trim();
     }
 
     // ----- Toggle key visibility -----
