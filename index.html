@@ -247,28 +247,28 @@
         </div>
       </div>
 
-      <!-- PDF Preview Panel -->
-      <div id="previewPanel" class="hidden max-w-2xl mx-auto mt-6">
+      <!-- PDF Text Preview Panel -->
+      <div id="pdfPreviewPanel" class="hidden max-w-2xl mx-auto mt-6">
         <div class="bg-gray-900/30 rounded-2xl border border-gray-800/50 p-6">
-          <div class="flex items-center justify-between mb-3">
-            <label class="text-sm font-medium text-gray-300">Extracted Text — verify this looks correct</label>
-            <span id="previewStatus" class="text-xs text-gray-500"></span>
-          </div>
+          <label class="text-sm font-medium text-gray-300 mb-3 block">Your resume text — edit if needed, then click Extract</label>
           <textarea
-            id="previewText"
-            rows="10"
-            readonly
-            class="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-300 resize-y"
+            id="pdfPreviewText"
+            rows="12"
+            class="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent resize-y"
           ></textarea>
-          <div class="flex justify-between items-center mt-4">
-            <button id="rejectPreviewBtn" class="text-sm text-gray-500 hover:text-gray-300 underline transition-colors">
-              Clear & paste manually
-            </button>
+          
+          <!-- AI Extraction Option (only if API key present) -->
+          <div id="aiExtractOption" class="hidden mt-4 flex items-center gap-2">
+            <input type="checkbox" id="useAIExtract" checked class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-500/50">
+            <label for="useAIExtract" class="text-sm text-gray-400">Use AI extraction (more accurate)</label>
+          </div>
+          
+          <div class="flex justify-end mt-4">
             <button
-              id="confirmPreviewBtn"
-              class="bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-medium px-6 py-2.5 rounded-xl text-sm transition-all flex items-center gap-2 shadow-lg shadow-green-600/20"
+              id="extractFromPreviewBtn"
+              class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-8 py-3 rounded-xl text-sm transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20"
             >
-              <span>Looks good → Extract JSON</span>
+              <span>Extract JSON from this text →</span>
             </button>
           </div>
         </div>
@@ -566,12 +566,12 @@
     const processingSubtitle = document.getElementById("processingSubtitle");
     const processingBar     = document.getElementById("processingBar");
 
-    // Preview DOM refs
-    const previewPanel = document.getElementById("previewPanel");
-    const previewTextarea = document.getElementById("previewText");
-    const previewStatus = document.getElementById("previewStatus");
-    const confirmPreviewBtn = document.getElementById("confirmPreviewBtn");
-    const rejectPreviewBtn = document.getElementById("rejectPreviewBtn");
+    // PDF Preview DOM refs
+    const pdfPreviewPanel = document.getElementById("pdfPreviewPanel");
+    const pdfPreviewText = document.getElementById("pdfPreviewText");
+    const extractFromPreviewBtn = document.getElementById("extractFromPreviewBtn");
+    const aiExtractOption = document.getElementById("aiExtractOption");
+    const useAIExtract = document.getElementById("useAIExtract");
 
     // Dashboard DOM refs
     const uploadSection    = document.getElementById("uploadSection");
@@ -617,7 +617,6 @@
     let extractedJSON = null;
     let generatedHTML = null;
     let selectedFile  = null;
-    let extractedTextBuffer = ""; // Store extracted PDF text for preview
 
     // ----- Settings toggle -----
     settingsToggle.addEventListener("click", () => {
@@ -730,134 +729,43 @@
     }
 
     // ================================================================
-    // PDF UPLOAD - Two-Path System with Preview
+    // PDF UPLOAD - Simple extraction with editable preview
     // ================================================================
     uploadBtn.addEventListener("click", async () => {
       if (!selectedFile) return;
 
       hideStatus();
-      hidePreviewPanel();
-      showProcessing("Processing your resume...", "Starting PDF extraction");
-      updateProcessingBar(10);
-
-      const apiKey = apiKeyInput.value.trim();
-      let extractionVia = "";
+      hidePDFPreview();
+      setLoading(true);
+      uploadLabel.textContent = "Extracting text...";
 
       try {
-        // PATH A: Vision API (if API key provided)
-        if (apiKey) {
-          updateProcessingText("Processing your resume...", "Using GPT-4o Vision API");
-          updateProcessingBar(30);
-
-          try {
-            const visionResult = await extractWithVisionAPI(selectedFile, apiKey);
-            updateProcessingBar(80);
-
-            // Validate Vision API result
-            if (!visionResult || typeof visionResult !== "object") {
-              throw new Error("Vision API returned invalid data");
-            }
-
-            // Success - skip preview, go straight to dashboard
-            extractedJSON = visionResult;
-            renderDashboard(visionResult);
-            renderJSON(visionResult);
-            showDashboard();
-            updateProcessingBar(100);
-            hideProcessing();
-            showStatus("success", `✓ Extracted from "${selectedFile.name}" via GPT-4o Vision`);
-            return; // Done - skip preview for Vision API
-
-          } catch (visionErr) {
-            console.log("Vision API failed, falling back to Path B:", visionErr.message);
-            showStatus("warning", "Vision API failed, falling back to coordinate extraction");
-            // Continue to Path B
-          }
-        }
-
-        // PATH B: Coordinate-aware extraction (or fallback)
-        updateProcessingText("Processing your resume...", "Using coordinate-aware extraction");
-        updateProcessingBar(40);
-
-        const text = await extractTextFromPDF(selectedFile);
-        extractionVia = "coordinate";
-
-        updateProcessingBar(60);
-
-        // Error handling: extraction too short
-        if (!text || text.length < 100) {
-          hideProcessing();
-          showStatus("error", `PDF extraction failed: only ${text?.length || 0} chars extracted. The PDF may be scanned or image-based. Try pasting text manually.`);
+        // Simple text extraction - just join all text items with spaces
+        const rawText = await extractRawTextFromPDF(selectedFile);
+        
+        if (!rawText || rawText.length < 50) {
+          showStatus("error", "Could not extract text from PDF. It may be a scanned image. Try pasting text manually.");
+          setLoading(false);
+          uploadLabel.textContent = "Upload & Extract";
           return;
         }
 
-        // Store extracted text for preview
-        extractedTextBuffer = text;
-        showPreviewPanel(text, extractionVia);
-        hideProcessing();
-
-        // Wait for user to confirm via preview panel
-        // Extraction continues when confirmPreviewBtn is clicked
-
-      } catch (err) {
-        hideProcessing();
-        showStatus("error", "PDF processing failed: " + err.message);
-      }
-    });
-
-    // ================================================================
-    // PREVIEW CONFIRM BUTTON - Continue extraction from preview
-    // ================================================================
-    confirmPreviewBtn.addEventListener("click", async () => {
-      const text = previewTextarea.value.trim();
-      if (!text) {
-        showStatus("error", "No text to extract. Please paste your resume text.");
-        return;
-      }
-
-      hidePreviewPanel();
-      hideStatus();
-      setLoading(true);
-
-      try {
-        const apiKey = apiKeyInput.value.trim();
-        let result;
-
-        if (apiKey) {
-          result = await extractWithLLM(text, apiKey);
-        } else {
-          result = extractWithHeuristics(text);
-        }
-
-        extractedJSON = result;
-        renderDashboard(result);
-        renderJSON(result);
-        showDashboard();
-        showStatus("success", apiKey
-          ? "✓ Extracted via OpenAI GPT-3.5-turbo"
-          : "✓ Extracted via coordinate-aware parsing + heuristics");
-
-      } catch (err) {
-        showStatus("error", "Extraction failed: " + err.message);
-      } finally {
+        // Show the preview panel with extracted text
+        showPDFPreview(rawText);
         setLoading(false);
+        uploadLabel.textContent = "Upload & Extract";
+
+      } catch (err) {
+        setLoading(false);
+        uploadLabel.textContent = "Upload & Extract";
+        showStatus("error", "PDF extraction failed: " + err.message);
       }
     });
 
     // ================================================================
-    // PREVIEW REJECT BUTTON - Clear and let user paste manually
+    // SIMPLE PDF TEXT EXTRACTION (Step 1)
     // ================================================================
-    rejectPreviewBtn.addEventListener("click", () => {
-      hidePreviewPanel();
-      resumeTextarea.value = "";
-      resumeTextarea.focus();
-      showStatus("warning", "PDF extraction rejected. You can paste text manually below.");
-      // Scroll to textarea
-      resumeTextarea.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-
-    // ----- Client-side PDF extraction using coordinate-aware algorithm (Path B) -----
-    async function extractTextFromPDF(file) {
+    async function extractRawTextFromPDF(file) {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let fullText = "";
@@ -865,188 +773,80 @@
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = reconstructPageText(textContent);
+        // Simple: join all text items with space in the order they appear
+        const pageText = textContent.items.map(item => item.str).join(" ");
         fullText += pageText + "\n\n";
       }
 
       return fullText.trim();
     }
 
-    // Helper: Reconstruct page text using coordinate-based layout detection
-    function reconstructPageText(textContent) {
-      const items = textContent.items;
-      if (!items || items.length === 0) return "";
+    // ================================================================
+    // PDF PREVIEW PANEL FUNCTIONS (Step 2)
+    // ================================================================
+    function showPDFPreview(text) {
+      pdfPreviewText.value = text;
+      pdfPreviewPanel.classList.remove("hidden");
+      
+      // Show AI option if API key is present
+      const apiKey = apiKeyInput.value.trim();
+      if (apiKey) {
+        aiExtractOption.classList.remove("hidden");
+      } else {
+        aiExtractOption.classList.add("hidden");
+      }
+      
+      pdfPreviewPanel.scrollIntoView({ behavior: "smooth" });
+    }
 
-      // Extract x, y, text from items
-      const textItems = items.map(item => ({
-        x: item.transform[4],
-        y: item.transform[5],
-        text: item.str
-      }));
+    function hidePDFPreview() {
+      pdfPreviewPanel.classList.add("hidden");
+      pdfPreviewText.value = "";
+    }
 
-      // Group by row using Y-coordinate threshold (≈3 pixels tolerance)
-      const rowThreshold = 3;
-      const rows = [];
-      let currentRow = [textItems[0]];
+    // ================================================================
+    // EXTRACT FROM PREVIEW BUTTON (Step 3)
+    // ================================================================
+    extractFromPreviewBtn.addEventListener("click", async () => {
+      const text = pdfPreviewText.value.trim();
+      if (!text) {
+        showStatus("error", "No text to extract. Please paste your resume text.");
+        return;
+      }
 
-      for (let i = 1; i < textItems.length; i++) {
-        const prevItem = textItems[i - 1];
-        const currItem = textItems[i];
+      // Copy text to the main textarea (unifies with manual paste flow)
+      resumeTextarea.value = text;
+      hidePDFPreview();
+      hideStatus();
+      setLoading(true);
 
-        if (Math.abs(currItem.y - prevItem.y) <= rowThreshold) {
-          currentRow.push(currItem);
+      try {
+        const apiKey = apiKeyInput.value.trim();
+        const useAI = useAIExtract.checked;
+        let result;
+
+        if (apiKey && useAI) {
+          // Use existing LLM extraction
+          result = await extractWithLLM(text, apiKey);
         } else {
-          rows.push(currentRow);
-          currentRow = [currItem];
+          // Use existing heuristic extraction
+          result = extractWithHeuristics(text);
         }
+
+        extractedJSON = result;
+        renderDashboard(result);
+        renderJSON(result);
+        showDashboard();
+        showStatus("success", (apiKey && useAI)
+          ? "✓ Extracted via OpenAI GPT-3.5-turbo"
+          : "✓ Extracted via regex/heuristic parsing");
+
+      } catch (err) {
+        showStatus("error", "Extraction failed: " + err.message);
+      } finally {
+        setLoading(false);
       }
-      rows.push(currentRow);
-
-      // Sort each row left to right (by X)
-      rows.forEach(row => row.sort((a, b) => a.x - b.x));
-
-      // Detect multi-column layout (>150px gap suggests column break)
-      const columnGapThreshold = 150;
-      let reconstructedRows = [];
-
-      rows.forEach(row => {
-        if (row.length === 0) return;
-
-        let fragments = [];
-        let currentFragment = [row[0]];
-
-        for (let j = 1; j < row.length; j++) {
-          const prev = row[j - 1];
-          const curr = row[j];
-          const gap = curr.x - (prev.x + prev.text.length * 6); // Approximate character width
-
-          if (gap > columnGapThreshold) {
-            fragments.push(currentFragment);
-            currentFragment = [curr];
-          } else {
-            currentFragment.push(curr);
-          }
-        }
-        fragments.push(currentFragment);
-
-        // Join fragments with tab separation
-        const rowText = fragments
-          .map(f => f.map(item => item.text).join(" "))
-          .join("  |  "); // Visual separator for columns
-        reconstructedRows.push(rowText);
-      });
-
-      return reconstructedRows.join("\n");
-    }
-
-    // ================================================================
-    // VISION API EXTRACTION (Path A - OpenAI gpt-4o)
-    // ================================================================
-    async function extractWithVisionAPI(file, apiKey) {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-      // Convert each page to PNG via canvas
-      const pageImages = [];
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 2.0 }); // Higher resolution for OCR
-        const canvas = document.createElement("canvas");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext("2d");
-        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-        const base64 = canvas.toDataURL("image/png").replace("data:image/png;base64,", "");
-        pageImages.push(base64);
-      }
-
-      // Call OpenAI Vision API
-      const systemPrompt = `You are a resume parser. Look at the provided resume image and extract ALL available information into structured JSON. Return ONLY valid JSON, no markdown, no explanation.
-
-JSON Schema:
-{
-  "personal": {
-    "name": "",
-    "title": "",
-    "email": "",
-    "phone": "",
-    "linkedin": "",
-    "github": "",
-    "website": "",
-    "location": ""
-  },
-  "summary": "",
-  "experience": [{"company": "", "role": "", "duration": "", "achievements": []}],
-  "education": [{"institution": "", "degree": "", "year": ""}],
-  "skills": [],
-  "projects": [{"name": "", "description": "", "technologies": [], "link": ""}],
-  "certifications": [{"name": "", "issuer": "", "year": ""}]
-}
-
-Rules:
-- Use "none" for missing fields
-- achievements must be an array of strings
-- duration should be "MMM YYYY - MMM YYYY" or "YYYY - YYYY" or "Present"`;
-
-      const messages = [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Extract structured data from this resume:" },
-            ...pageImages.map(img => ({
-              type: "image_url",
-              image_url: { url: `data:image/png;base64,${img}`, detail: "high" }
-            }))
-          ]
-        }
-      ];
-
-      const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: messages,
-          temperature: 0,
-          max_tokens: 4000
-        })
-      });
-
-      if (!resp.ok) {
-        const errData = await resp.text();
-        throw new Error(`Vision API failed: ${resp.status} - ${errData}`);
-      }
-
-      const data = await resp.json();
-      const content = data.choices?.[0]?.message?.content || "";
-
-      // Clean up markdown if present
-      const cleaned = content
-        .replace(/```json\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
-
-      return JSON.parse(cleaned);
-    }
-
-    // ================================================================
-    // PREVIEW FUNCTIONS
-    // ================================================================
-    function showPreviewPanel(text, via = "text") {
-      previewTextarea.value = text;
-      previewStatus.textContent = `Extracted via ${via === "vision" ? "GPT-4o Vision API" : "coordinate-aware algorithm"} (${text.length} chars)`;
-      previewPanel.classList.remove("hidden");
-      previewPanel.scrollIntoView({ behavior: "smooth" });
-    }
-
-    function hidePreviewPanel() {
-      previewPanel.classList.add("hidden");
-      previewTextarea.value = "";
-    }
+    });
 
     // ================================================================
     // TEXT EXTRACT BUTTON
