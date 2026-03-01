@@ -808,38 +808,35 @@
     // EXTRACT FROM PREVIEW BUTTON (Step 3)
     // ================================================================
     extractFromPreviewBtn.addEventListener("click", async () => {
-      const text = pdfPreviewText.value.trim();
-      if (!text) {
-        showStatus("error", "No text to extract. Please paste your resume text.");
+      const resumeText = document.getElementById('pdfPreviewText').value.trim();
+      if (!resumeText) {
+        showStatus("error", "No text to extract");
         return;
       }
 
-      // Copy text to the main textarea (unifies with manual paste flow)
-      resumeTextarea.value = text;
+      // Copy text to the main textarea so existing handlers work
+      resumeTextarea.value = resumeText;
       hidePDFPreview();
       hideStatus();
       setLoading(true);
 
       try {
         const apiKey = apiKeyInput.value.trim();
-        const useAI = useAIExtract.checked;
         let result;
 
-        if (apiKey && useAI) {
-          // Use existing LLM extraction
-          result = await extractWithLLM(text, apiKey);
+        if (apiKey) {
+          result = await extractWithLLM(resumeText, apiKey);
         } else {
-          // Use existing heuristic extraction
-          result = extractWithHeuristics(text);
+          result = extractWithHeuristics(resumeText);
         }
 
         extractedJSON = result;
         renderDashboard(result);
         renderJSON(result);
         showDashboard();
-        showStatus("success", (apiKey && useAI)
+        showStatus("success", apiKey
           ? "✓ Extracted via OpenAI GPT-3.5-turbo"
-          : "✓ Extracted via regex/heuristic parsing");
+          : "✓ Extracted via regex/heuristic parsing (best-effort)");
 
       } catch (err) {
         showStatus("error", "Extraction failed: " + err.message);
